@@ -102,34 +102,34 @@ export default function Page() {
       setMsg("Inserisci quante persone (min 1).");
       return;
     }
-    // per TAVOLO l'ordine può essere vuoto
     if (!cleanOrder && type !== "TAVOLO") {
       setStatus("err");
       setMsg("Scrivi l’ordine (per tavolo puoi lasciare vuoto).");
       return;
     }
 
-    const allergieArr = [
-      glutenFree ? "Senza glutine" : null,
-      lactoseFree ? "Senza lattosio" : null,
-      nutsAllergy ? "Allergia frutta secca" : null,
-      otherAllergy.trim() ? `Altro: ${otherAllergy.trim()}` : null,
-    ].filter(Boolean) as string[];
+    // ✅ stringa unica che finisce nel foglio/pannello
+    const allergeni = [
+      glutenFree ? "Senza glutine" : "",
+      lactoseFree ? "Senza lattosio" : "",
+      nutsAllergy ? "Allergia frutta secca" : "",
+      otherAllergy.trim() ? `Altro: ${otherAllergy.trim()}` : "",
+    ]
+      .filter(Boolean)
+      .join(", ");
 
-    const allergeni = allergieArr.join(", ");
-
-    // ✅ IMPORTANTISSIMO: questi nomi combaciano con /api/bookings
+    // ✅ Nomi chiave che combaciano con app/api/bookings/route.ts
     const payload = {
       nome: cleanName,
       telefono: cleanPhone,
-      tipo: type,
-      data: date,          // YYYY-MM-DD
-      ora: time,           // HH:mm
+      tipo: type, // "ASPORTO" | "CONSEGNA" | "TAVOLO"
+      data: date, // YYYY-MM-DD
+      ora: time,  // HH:mm
       ordine: type === "TAVOLO" ? (cleanOrder || "Prenotazione tavolo") : cleanOrder,
 
       indirizzo: needsAddress ? address.trim() : "",
       persone: needsPeople ? String(people) : "",
-      allergeni,
+      allergeni: allergeni || "", // ✅ sempre presente
       note: note.trim(),
 
       negozio: BUSINESS_NAME,
@@ -144,11 +144,11 @@ export default function Page() {
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json().catch(() => null);
+      const dataRes = await res.json().catch(() => null);
 
       if (!res.ok) {
         setStatus("err");
-        setMsg(data?.error || "Errore invio. Controlla i log su Vercel.");
+        setMsg(dataRes?.error || "Errore invio. Controlla i log su Vercel.");
         return;
       }
 
@@ -181,7 +181,9 @@ export default function Page() {
 
             <div className="heroInfo">
               <div className="infoChip">📍 {ADDRESS}</div>
-              <a className="infoChip" href={`tel:${PHONE.replace(/\s/g, "")}`}>☎️ {PHONE}</a>
+              <a className="infoChip" href={`tel:${PHONE.replace(/\s/g, "")}`}>
+                ☎️ {PHONE}
+              </a>
 
               <details className="infoChip infoDetails">
                 <summary className="infoSummary">🕒 Orari di apertura</summary>
@@ -198,19 +200,25 @@ export default function Page() {
           </div>
 
           <div className="heroRight">
-            <a className="cta ctaGreen" href={`tel:${PHONE.replace(/\s/g, "")}`}>📞 Chiama ora</a>
+            <a className="cta ctaGreen" href={`tel:${PHONE.replace(/\s/g, "")}`}>
+              📞 Chiama ora
+            </a>
             <a
               className="cta"
               target="_blank"
               rel="noreferrer"
-              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${BUSINESS_NAME} ${ADDRESS}`)}`}
+              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                `${BUSINESS_NAME} ${ADDRESS}`
+              )}`}
             >
               🧭 Indicazioni
             </a>
             <button
               type="button"
               className="cta ctaRed"
-              onClick={() => document.getElementById("orderCard")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              onClick={() =>
+                document.getElementById("orderCard")?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
             >
               🔥 Ordina adesso
             </button>
@@ -249,7 +257,13 @@ export default function Page() {
 
                   <div className="field">
                     <div className="label">Telefono</div>
-                    <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Es. 333 000 0000" inputMode="tel" />
+                    <input
+                      className="input"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="Es. 333 000 0000"
+                      inputMode="tel"
+                    />
                   </div>
 
                   <div className="field">
@@ -272,9 +286,13 @@ export default function Page() {
                       <option value="">{date ? "Seleziona un orario" : "Scegli prima la data"}</option>
                       {timeOptions.map((t) =>
                         t.startsWith("—") ? (
-                          <option key={t} value={t} disabled>{t}</option>
+                          <option key={t} value={t} disabled>
+                            {t}
+                          </option>
                         ) : (
-                          <option key={t} value={t}>{t}</option>
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
                         )
                       )}
                     </select>
@@ -285,7 +303,12 @@ export default function Page() {
                 {needsAddress && (
                   <div className="field">
                     <div className="label">Indirizzo consegna</div>
-                    <input className="input" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Via, civico, interno, citofono..." />
+                    <input
+                      className="input"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      placeholder="Via, civico, interno, citofono..."
+                    />
                   </div>
                 )}
 
@@ -293,31 +316,59 @@ export default function Page() {
                   <div className="field">
                     <div className="label">Persone</div>
                     <select className="select" value={people} onChange={(e) => setPeople(e.target.value)}>
-                      {["1","2","3","4","5","6","7","8","9","10"].map((n) => <option key={n} value={n}>{n}</option>)}
+                      {["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"].map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
                       <option value="11">11+</option>
                     </select>
                   </div>
                 )}
 
                 <div className="checkRow">
-                  <label className="check"><input type="checkbox" checked={glutenFree} onChange={(e) => setGlutenFree(e.target.checked)} />Senza glutine</label>
-                  <label className="check"><input type="checkbox" checked={lactoseFree} onChange={(e) => setLactoseFree(e.target.checked)} />Senza lattosio</label>
-                  <label className="check"><input type="checkbox" checked={nutsAllergy} onChange={(e) => setNutsAllergy(e.target.checked)} />Allergia frutta secca</label>
+                  <label className="check">
+                    <input type="checkbox" checked={glutenFree} onChange={(e) => setGlutenFree(e.target.checked)} />
+                    Senza glutine
+                  </label>
+                  <label className="check">
+                    <input type="checkbox" checked={lactoseFree} onChange={(e) => setLactoseFree(e.target.checked)} />
+                    Senza lattosio
+                  </label>
+                  <label className="check">
+                    <input type="checkbox" checked={nutsAllergy} onChange={(e) => setNutsAllergy(e.target.checked)} />
+                    Allergia frutta secca
+                  </label>
                 </div>
 
                 <div className="field">
                   <div className="label">Allergie / richieste extra (opzionale)</div>
-                  <input className="input" value={otherAllergy} onChange={(e) => setOtherAllergy(e.target.value)} placeholder="Es. allergia crostacei, no cipolla, cottura ben cotta…" />
+                  <input
+                    className="input"
+                    value={otherAllergy}
+                    onChange={(e) => setOtherAllergy(e.target.value)}
+                    placeholder="Es. allergia crostacei, no cipolla, cottura ben cotta…"
+                  />
                 </div>
 
                 <div className="field">
                   <div className="label">Ordine</div>
-                  <textarea className="textarea" value={order} onChange={(e) => setOrder(e.target.value)} placeholder="Es. 2 Margherite + 1 Diavola + 1 coca (allergie?)" />
+                  <textarea
+                    className="textarea"
+                    value={order}
+                    onChange={(e) => setOrder(e.target.value)}
+                    placeholder="Es. 2 Margherite + 1 Diavola + 1 coca (allergie?)"
+                  />
                 </div>
 
                 <div className="field">
                   <div className="label">Note (opzionale)</div>
-                  <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Es. citofono, interno, impasto integrale, ecc." />
+                  <input
+                    className="input"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="Es. citofono, interno, impasto integrale, ecc."
+                  />
                 </div>
 
                 <div className="actions">

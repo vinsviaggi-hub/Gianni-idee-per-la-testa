@@ -1,222 +1,199 @@
-// app/page.tsx
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, type FormEvent } from "react";
 import ChatBox from "./components/chatbox";
 
 type OrderType = "ASPORTO" | "CONSEGNA" | "TAVOLO";
+type PayType = "CONTANTI" | "CARTA" | "SATISPAY";
 
-const BUSINESS = {
-  name: "Pala Pizza",
-  tagline: "Pizzeria & Ristorante · Ordina o prenota in pochi secondi",
-  address: "Via delle Pizze 21, 00100 Roma (RM)",
-  phoneDisplay: "+39 06 9876 1234",     // ✅ NON è il tuo
-  phoneTel: "+390698761234",
-  mapsUrl:
-    "https://www.google.com/maps/search/?api=1&query=Via%20delle%20Pizze%2021%2C%2000100%20Roma%20(RM)",
-  hours: [
-    { day: "Lun–Gio", time: "12:00–15:00 · 18:00–23:00" },
-    { day: "Ven–Sab", time: "12:00–15:00 · 18:00–00:00" },
-    { day: "Dom", time: "18:00–23:00" },
-  ],
-};
+const BUSINESS_NAME = "Pala Pizza";
+const TAGLINE = "Pizzeria & Ristorante · Ordina o prenota in pochi secondi";
+const ADDRESS = "Via delle Pizze 21, 00100 Roma (RM)";
+const PHONE = "+39 000 000 0000";
 
-function buildTimeOptions() {
+const OPENING_HOURS = [
+  { day: "Lun", hours: "12:00–14:30 · 18:30–22:30" },
+  { day: "Mar", hours: "12:00–14:30 · 18:30–22:30" },
+  { day: "Mer", hours: "12:00–14:30 · 18:30–22:30" },
+  { day: "Gio", hours: "12:00–14:30 · 18:30–22:30" },
+  { day: "Ven", hours: "12:00–14:30 · 18:30–23:00" },
+  { day: "Sab", hours: "12:00–15:00 · 18:30–23:00" },
+  { day: "Dom", hours: "18:30–22:30" },
+];
+
+function pad2(n: number) {
+  return n.toString().padStart(2, "0");
+}
+function buildSlots(startHH: number, startMM: number, endHH: number, endMM: number, stepMin = 15) {
   const out: string[] = [];
-  const start = 18 * 60;
-  const end = 23 * 60;
-  for (let m = start; m <= end; m += 15) {
-    const hh = String(Math.floor(m / 60)).padStart(2, "0");
-    const mm = String(m % 60).padStart(2, "0");
-    out.push(`${hh}:${mm}`);
+  let t = startHH * 60 + startMM;
+  const end = endHH * 60 + endMM;
+  while (t <= end) {
+    const hh = Math.floor(t / 60);
+    const mm = t % 60;
+    out.push(`${pad2(hh)}:${pad2(mm)}`);
+    t += stepMin;
   }
   return out;
 }
 
 export default function Page() {
-  const timeOptions = useMemo(() => buildTimeOptions(), []);
-
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [type, setType] = useState<OrderType>("ASPORTO");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
+  const [payment, setPayment] = useState<PayType>("CONTANTI");
   const [address, setAddress] = useState("");
-  const [payment, setPayment] = useState<"Contanti" | "Carta" | "Satispay">("Contanti");
-  const [notes, setNotes] = useState("");
+  const [people, setPeople] = useState("2");
   const [order, setOrder] = useState("");
+  const [note, setNote] = useState("");
 
   const [glutenFree, setGlutenFree] = useState(false);
   const [lactoseFree, setLactoseFree] = useState(false);
   const [nutsAllergy, setNutsAllergy] = useState(false);
-  const [otherAllergy, setOtherAllergy] = useState(false);
+  const [otherAllergy, setOtherAllergy] = useState("");
 
-  const [sending, setSending] = useState(false);
-  const [sentOk, setSentOk] = useState<string | null>(null);
-  const [sentErr, setSentErr] = useState<string | null>(null);
+  const [status, setStatus] = useState<"idle" | "loading" | "ok" | "err">("idle");
+  const [msg, setMsg] = useState("");
 
-  async function submitBooking(e: React.FormEvent) {
+  const timeOptions = useMemo(() => {
+    const lunch = buildSlots(12, 0, 14, 30, 15);
+    const dinner = buildSlots(18, 30, 22, 30, 15);
+    return ["— Pranzo —", ...lunch, "— Cena —", ...dinner];
+  }, []);
+
+  const needsAddress = type === "CONSEGNA";
+  const needsPeople = type === "TAVOLO";
+
+  async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (sending) return;
+    setMsg("");
+    setStatus("loading");
 
-    setSentOk(null);
-    setSentErr(null);
+    const cleanName = name.trim();
+    const cleanPhone = phone.trim();
+    const cleanOrder = order.trim();
 
-    const trimmedName = name.trim();
-    const trimmedPhone = phone.trim();
-    const trimmedOrder = order.trim();
+    if (!cleanName || !cleanPhone) return setStatus("err"), setMsg("Inserisci nome e telefono.");
+    if (!date) return setStatus("err"), setMsg("Seleziona una data.");
+    if (!time || time.startsWith("—")) return setStatus("err"), setMsg("Seleziona un orario.");
+    if (needsAddress && !address.trim()) return setStatus("err"), setMsg("Per la consegna serve l’indirizzo.");
+    if (needsPeople && (!people || Number(people) < 1)) return setStatus("err"), setMsg("Inserisci quante persone (min 1).");
+    if (!cleanOrder && type !== "TAVOLO") return setStatus("err"), setMsg("Scrivi l’ordine (per tavolo puoi lasciare vuoto).");
 
-    if (!trimmedName || !trimmedPhone || !date || !time || !trimmedOrder) {
-      setSentErr("Compila Nome, Telefono, Data, Ora e Ordine.");
-      return;
-    }
-    if (type === "CONSEGNA" && !address.trim()) {
-      setSentErr("Per la consegna serve l’indirizzo.");
-      return;
-    }
+    const allergies = [
+      glutenFree ? "Senza glutine" : null,
+      lactoseFree ? "Senza lattosio" : null,
+      nutsAllergy ? "Allergia frutta secca" : null,
+      otherAllergy.trim() ? `Altro: ${otherAllergy.trim()}` : null,
+    ].filter(Boolean);
 
-    setSending(true);
+    const payload = {
+      name: cleanName,
+      phone: cleanPhone,
+      type,
+      date,
+      time,
+      payment,
+      address: needsAddress ? address.trim() : "",
+      people: needsPeople ? String(people) : "",
+      order: cleanOrder,
+      note: note.trim(),
+      allergies,
+      source: "web",
+      business: BUSINESS_NAME,
+    };
 
     try {
-      const payload = {
-        nome: trimmedName,
-        telefono: trimmedPhone,
-        tipo: type,
-        data: date,       // ✅ così non rompe TypeScript
-        ora: time,
-        indirizzo: type === "CONSEGNA" ? address.trim() : "",
-        pagamento: payment,
-        note: notes.trim(),
-        ordine: trimmedOrder,
-        preferenze: {
-          senzaGlutine: glutenFree,
-          senzaLattosio: lactoseFree,
-          allergiaFruttaSecca: nutsAllergy,
-          allergiaAltro: otherAllergy,
-        },
-      };
-
       const res = await fetch("/api/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      if (!res.ok) throw new Error("Errore invio");
 
-      const dataRes = await res.json().catch(() => null);
+      setStatus("ok");
+      setMsg("Richiesta inviata ✅ Ti ricontattiamo a breve.");
 
-      if (!res.ok) {
-        setSentErr(dataRes?.error || "Errore invio richiesta.");
-        return;
-      }
-
-      setSentOk("Richiesta inviata ✅ Ti rispondiamo appena possibile.");
-      setName("");
-      setPhone("");
-      setType("ASPORTO");
-      setDate("");
-      setTime("");
-      setAddress("");
-      setPayment("Contanti");
-      setNotes("");
       setOrder("");
+      setNote("");
+      setAddress("");
+      setOtherAllergy("");
       setGlutenFree(false);
       setLactoseFree(false);
       setNutsAllergy(false);
-      setOtherAllergy(false);
     } catch {
-      setSentErr("Errore di rete. Riprova.");
-    } finally {
-      setSending(false);
+      setStatus("err");
+      setMsg("Errore invio. Se succede ancora, dimmi cosa esce in Vercel.");
     }
   }
 
   return (
     <div className="appShell">
       <div className="wrap">
-        {/* HEADER */}
-        <div className="card">
-          <div className="cardInner">
-            <div className="cardHeader">
-              <div>
-                <div className="badge">🍕 {BUSINESS.name}</div>
-                <h1 className="h1">
-                  {BUSINESS.name} <span aria-hidden>🍕</span>
-                </h1>
-                <p className="sub">{BUSINESS.tagline}</p>
+        {/* HERO */}
+        <header className="hero">
+          <div className="heroLeft">
+            <div className="brandPill">🍕 {BUSINESS_NAME}</div>
+            <h1 className="heroTitle">{BUSINESS_NAME}</h1>
+            <p className="heroSub">{TAGLINE}</p>
 
-                <div className="pills">
-                  <div className="pill">
-                    <span aria-hidden>📍</span>
-                    <span>{BUSINESS.address}</span>
-                  </div>
+            <div className="heroInfo">
+              <div className="infoChip">📍 {ADDRESS}</div>
+              <a className="infoChip" href={`tel:${PHONE.replace(/\s/g, "")}`}>☎️ {PHONE}</a>
 
-                  <div className="pill">
-                    <span aria-hidden>☎️</span>
-                    <span>{BUSINESS.phoneDisplay}</span>
-                  </div>
-
-                  {/* Orari a tendina */}
-                  <details className="pill">
-                    <summary className="pillSmall" style={{ listStyle: "none", cursor: "pointer" }}>
-                      <span aria-hidden>🕒</span> Orari di apertura ▾
-                    </summary>
-                    <div style={{ padding: "10px 6px 0" }}>
-                      {BUSINESS.hours.map((h) => (
-                        <div key={h.day} style={{ display: "flex", gap: 10, marginBottom: 6 }}>
-                          <strong style={{ width: 74 }}>{h.day}</strong>
-                          <span>{h.time}</span>
-                        </div>
-                      ))}
+              <details className="infoChip infoDetails">
+                <summary className="infoSummary">🕒 Orari di apertura</summary>
+                <div className="infoPanel">
+                  {OPENING_HOURS.map((x) => (
+                    <div key={x.day} className="infoRow">
+                      <b>{x.day}</b> <span>{x.hours}</span>
                     </div>
-                  </details>
+                  ))}
+                  <div className="infoNote">* Festivi possono variare.</div>
                 </div>
-              </div>
-
-              <div className="btnRow" style={{ minWidth: 240 }}>
-                <a className="btn btnGreen" href={`tel:${BUSINESS.phoneTel}`}>
-                  Chiama ora
-                </a>
-                <a className="btn" href={BUSINESS.mapsUrl} target="_blank" rel="noreferrer">
-                  Indicazioni
-                </a>
-              </div>
+              </details>
             </div>
-
-            <div className="hrGradient" />
           </div>
-        </div>
 
-        {/* MAIN */}
-        <div className="grid2">
-          {/* FORM */}
-          <div className="card">
+          <div className="heroRight">
+            <a className="cta ctaGreen" href={`tel:${PHONE.replace(/\s/g, "")}`}>📞 Chiama ora</a>
+            <a
+              className="cta"
+              target="_blank"
+              rel="noreferrer"
+              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${BUSINESS_NAME} ${ADDRESS}`)}`}
+            >
+              🧭 Indicazioni
+            </a>
+          </div>
+
+          <div className="heroBar" />
+        </header>
+
+        {/* MAIN GRID */}
+        <main className="mainGrid">
+          {/* ORDER */}
+          <section className="card orderCard">
             <div className="cardInner">
-              <h2 className="formTitle">Ordina / Prenota</h2>
-              <p className="formSub">Inserisci i dati e invia la richiesta.</p>
+              <div className="sectionHead">
+                <h2 className="sectionTitle">Ordina / Prenota</h2>
+                <p className="sectionSub">
+                  Consegna → indirizzo. Tavolo → persone. Compilazione veloce.
+                </p>
+              </div>
 
-              <form onSubmit={submitBooking}>
+              <form onSubmit={onSubmit} className="formStack">
                 <div className="formGrid">
                   <div className="field">
                     <div className="label">Nome</div>
-                    <input
-                      className="input"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="Es. Marco"
-                      autoComplete="name"
-                    />
+                    <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Es. Marco" />
                   </div>
 
                   <div className="field">
                     <div className="label">Telefono</div>
-                    <input
-                      className="input"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="Es. 333 123 4567"
-                      inputMode="tel"
-                      autoComplete="tel"
-                    />
+                    <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Es. 333 000 0000" inputMode="tel" />
                   </div>
 
                   <div className="field">
@@ -224,31 +201,18 @@ export default function Page() {
                     <select className="select" value={type} onChange={(e) => setType(e.target.value as OrderType)}>
                       <option value="ASPORTO">Asporto</option>
                       <option value="CONSEGNA">Consegna</option>
-                      <option value="TAVOLO">Tavolo</option>
+                      <option value="TAVOLO">Prenota tavolo</option>
                     </select>
                   </div>
 
-                  {type === "CONSEGNA" ? (
-                    <div className="field">
-                      <div className="label">Indirizzo (consegna)</div>
-                      <input
-                        className="input"
-                        value={address}
-                        onChange={(e) => setAddress(e.target.value)}
-                        placeholder="Es. Via Roma 10, Scala A"
-                        autoComplete="street-address"
-                      />
-                    </div>
-                  ) : (
-                    <div className="field">
-                      <div className="label">Pagamento (opzionale)</div>
-                      <select className="select" value={payment} onChange={(e) => setPayment(e.target.value as any)}>
-                        <option value="Contanti">Contanti</option>
-                        <option value="Carta">Carta</option>
-                        <option value="Satispay">Satispay</option>
-                      </select>
-                    </div>
-                  )}
+                  <div className="field">
+                    <div className="label">Pagamento (opzionale)</div>
+                    <select className="select" value={payment} onChange={(e) => setPayment(e.target.value as PayType)}>
+                      <option value="CONTANTI">Contanti</option>
+                      <option value="CARTA">Carta</option>
+                      <option value="SATISPAY">Satispay</option>
+                    </select>
+                  </div>
 
                   <div className="field">
                     <div className="label">Data</div>
@@ -256,83 +220,84 @@ export default function Page() {
                   </div>
 
                   <div className="field">
-                    <div className="label">Ora (a tendina)</div>
+                    <div className="label">Orario (a tendina)</div>
                     <select className="select" value={time} onChange={(e) => setTime(e.target.value)} disabled={!date}>
                       <option value="">{date ? "Seleziona un orario" : "Scegli prima la data"}</option>
-                      {timeOptions.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
+                      {timeOptions.map((t) =>
+                        t.startsWith("—") ? (
+                          <option key={t} value={t} disabled>{t}</option>
+                        ) : (
+                          <option key={t} value={t}>{t}</option>
+                        )
+                      )}
                     </select>
-                    <div className="smallHint">Se non trovi l’orario, scrivilo nelle note.</div>
+                    <div className="hint">Se non trovi l’orario, scrivilo nelle note.</div>
                   </div>
                 </div>
 
+                {needsAddress && (
+                  <div className="field">
+                    <div className="label">Indirizzo consegna</div>
+                    <input className="input" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Via, numero civico, interno, citofono..." />
+                  </div>
+                )}
+
+                {needsPeople && (
+                  <div className="field">
+                    <div className="label">Persone</div>
+                    <select className="select" value={people} onChange={(e) => setPeople(e.target.value)}>
+                      {["1","2","3","4","5","6","7","8","9","10"].map((n) => <option key={n} value={n}>{n}</option>)}
+                      <option value="11">11+</option>
+                    </select>
+                  </div>
+                )}
+
                 <div className="checkRow">
-                  <label className="check">
-                    <input type="checkbox" checked={glutenFree} onChange={(e) => setGlutenFree(e.target.checked)} />
-                    Senza glutine
-                  </label>
-                  <label className="check">
-                    <input type="checkbox" checked={lactoseFree} onChange={(e) => setLactoseFree(e.target.checked)} />
-                    Senza lattosio
-                  </label>
-                  <label className="check">
-                    <input type="checkbox" checked={nutsAllergy} onChange={(e) => setNutsAllergy(e.target.checked)} />
-                    Allergia frutta secca
-                  </label>
-                  <label className="check">
-                    <input type="checkbox" checked={otherAllergy} onChange={(e) => setOtherAllergy(e.target.checked)} />
-                    Allergia altro (scrivi nelle note)
-                  </label>
+                  <label className="check"><input type="checkbox" checked={glutenFree} onChange={(e) => setGlutenFree(e.target.checked)} />Senza glutine</label>
+                  <label className="check"><input type="checkbox" checked={lactoseFree} onChange={(e) => setLactoseFree(e.target.checked)} />Senza lattosio</label>
+                  <label className="check"><input type="checkbox" checked={nutsAllergy} onChange={(e) => setNutsAllergy(e.target.checked)} />Allergia frutta secca</label>
                 </div>
 
-                <div style={{ marginTop: 12 }} className="field">
+                <div className="field">
+                  <div className="label">Allergie / richieste extra (opzionale)</div>
+                  <input className="input" value={otherAllergy} onChange={(e) => setOtherAllergy(e.target.value)} placeholder="Es. allergia crostacei, no cipolla, cottura ben cotta…" />
+                </div>
+
+                <div className="field">
                   <div className="label">Ordine</div>
-                  <textarea
-                    className="textarea"
-                    value={order}
-                    onChange={(e) => setOrder(e.target.value)}
-                    placeholder="Es. 2 Margherite + 1 Diavola, 1 coca (allergie?)"
-                  />
+                  <textarea className="textarea" value={order} onChange={(e) => setOrder(e.target.value)} placeholder="Es. 2 Margherite + 1 Diavola + 1 coca (allergie?)" />
                 </div>
 
-                <div style={{ marginTop: 12 }} className="field">
+                <div className="field">
                   <div className="label">Note (opzionale)</div>
-                  <input
-                    className="input"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Es. senza cipolla, impasto integrale, ecc."
-                  />
+                  <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Es. citofono, interno, impasto integrale, ecc." />
                 </div>
 
-                <div style={{ marginTop: 14 }}>
-                  <button className="btn btnGreen" type="submit" disabled={sending}>
-                    {sending ? "Invio..." : "Invia"}
+                <div className="actions">
+                  <button className="btnPrimary" disabled={status === "loading"}>
+                    {status === "loading" ? "Invio..." : "Invia richiesta"}
                   </button>
-
-                  {sentOk && <div style={{ marginTop: 10, fontWeight: 900 }}>{sentOk}</div>}
-                  {sentErr && (
-                    <div style={{ marginTop: 10, fontWeight: 900, color: "#b10f0f" }}>
-                      ❌ {sentErr}
-                    </div>
-                  )}
+                  <div className={`status ${status}`}>{msg || " "}</div>
                 </div>
               </form>
             </div>
-          </div>
+          </section>
 
           {/* CHAT */}
-          <div className="card">
+          <section className="card chatCard">
             <div className="cardInner">
-              <h2 className="formTitle">Chat assistente</h2>
-              <p className="formSub">Menu, senza glutine, allergeni, ingredienti, tempi, ecc.</p>
+              <div className="sectionHead">
+                <h2 className="sectionTitle">Assistente</h2>
+                <p className="sectionSub">Domande su menu, allergeni, senza glutine, tempi consegna.</p>
+              </div>
               <ChatBox />
             </div>
-          </div>
-        </div>
+          </section>
+        </main>
+
+        <footer className="footer">
+          <b>{BUSINESS_NAME}</b> · {ADDRESS} · {PHONE}
+        </footer>
       </div>
     </div>
   );

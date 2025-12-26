@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useMemo, useState, type FormEvent } from "react";
 import styles from "./chatbox.module.css";
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -10,80 +10,90 @@ export default function ChatBox() {
     {
       role: "assistant",
       content:
-        "Ciao! Sono il bot di Pala Pizza 🍕\nPosso aiutarti con: orari, asporto/consegna, tempi, allergeni e come scrivere l’ordine.\nPer ordinare usa il modulo qui sopra 🙂",
+        "Ciao! 💈 Sono l’assistente del barber shop.\n\nPuoi chiedermi info su servizi, orari e disponibilità.\n\n⚠️ Per prenotare usa sempre il box “Prenotazione veloce” sotto la chat.",
     },
   ]);
+
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const listRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, loading]);
+  const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading]);
 
-  async function send() {
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
     const text = input.trim();
     if (!text || loading) return;
 
     setInput("");
-    setLoading(true);
-
     const next = [...messages, { role: "user", content: text } as Msg];
     setMessages(next);
+    setLoading(true);
 
     try {
-      const res = await fetch("/api/chat", {
+      const r = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, history: next }),
+        cache: "no-store",
+        body: JSON.stringify({ message: text }),
       });
 
-      const out = await res.json().catch(() => null);
-      if (!res.ok || !out?.reply) {
-        setMessages((m) => [...m, { role: "assistant", content: out?.error || "Errore. Riprova tra poco." }]);
-      } else {
-        setMessages((m) => [...m, { role: "assistant", content: out.reply }]);
-      }
+      const data = await r.json().catch(() => null);
+
+      const answer =
+        (data && (data.reply || data.message || data.text)) ||
+        (r.ok ? "Ok." : "Errore: risposta non valida.");
+
+      setMessages((prev) => [...prev, { role: "assistant", content: String(answer) }]);
     } catch {
-      setMessages((m) => [...m, { role: "assistant", content: "Errore rete. Controlla connessione." }]);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "Errore di rete. Riprova tra poco." },
+      ]);
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className={styles.chatWrap}>
-      <div className={styles.chatHead}>
-        <p className={styles.chatTitle}>Hai dubbi? Chiedi al bot 🍕</p>
-        <p className={styles.chatSub}>Risposte rapide su orari, consegna/asporto, allergeni, ordine.</p>
+    <section className={styles.wrap}>
+      <div className={styles.header}>
+        <div className={styles.badge}>💬 Chat assistente virtuale</div>
+        <div className={styles.sub}>
+          Fai una domanda su servizi, orari o disponibilità. Per fissare un appuntamento usa sempre il
+          box prenotazione sotto la chat.
+        </div>
       </div>
 
-      <div className={styles.chatList} ref={listRef}>
+      <div className={styles.box} aria-live="polite">
         {messages.map((m, i) => (
           <div
             key={i}
-            className={`${styles.bubble} ${m.role === "user" ? styles.user : styles.assistant}`}
+            className={`${styles.msg} ${m.role === "user" ? styles.user : styles.assistant}`}
           >
-            {m.content}
+            <div className={styles.bubble}>
+              {m.content.split("\n").map((line, idx) => (
+                <p key={idx} className={styles.line}>
+                  {line}
+                </p>
+              ))}
+            </div>
           </div>
         ))}
-        {loading && <div className={`${styles.bubble} ${styles.assistant}`}>Sto scrivendo…</div>}
-      </div>
 
-      <div className={styles.chatBar}>
-        <input
-          className={styles.chatInput}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Scrivi una domanda…"
-          onKeyDown={(e) => {
-            if (e.key === "Enter") send();
-          }}
-        />
-        <button className={styles.chatSend} onClick={send} disabled={loading}>
-          Invia
-        </button>
+        <form className={styles.form} onSubmit={onSubmit}>
+          <input
+            className={styles.input}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Scrivi qui il tuo messaggio..."
+            autoComplete="off"
+            inputMode="text"
+          />
+          <button className={styles.button} type="submit" disabled={!canSend}>
+            {loading ? "..." : "Invia"}
+          </button>
+        </form>
       </div>
-    </div>
+    </section>
   );
 }

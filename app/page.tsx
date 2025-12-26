@@ -1,237 +1,282 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
-import styles from "./page.module.css";
+import React, { useMemo, useRef, useState } from "react";
 import ChatBox from "./components/chatbox";
+import FastBookingForm from "./components/FastBookingForm";
+import CancelBookingForm from "./components/CancelBookingForm";
+import { getBusinessConfig } from "./config/business";
 
-type Tipo = "TAVOLO" | "ASPORTO" | "CONSEGNA";
-
-export default function Home() {
-  const [nome, setNome] = useState("");
-  const [telefono, setTelefono] = useState("");
-  const [tipo, setTipo] = useState<Tipo>("ASPORTO");
-  const [data, setData] = useState("");
-  const [ora, setOra] = useState("");
-  const [allergeni, setAllergeni] = useState("");
-  const [ordine, setOrdine] = useState("");
-  const [indirizzo, setIndirizzo] = useState("");
-  const [note, setNote] = useState("");
-  const [honeypot, setHoneypot] = useState("");
-
-  const [loading, setLoading] = useState(false);
-  const [okMsg, setOkMsg] = useState("");
-  const [err, setErr] = useState("");
-
-  const isConsegna = tipo === "CONSEGNA";
-
-  const canSubmit = useMemo(() => {
-    if (!nome.trim()) return false;
-    if (!telefono.trim()) return false;
-    if (!data.trim()) return false;
-    if (!ora.trim()) return false;
-    if (!ordine.trim()) return false;
-    if (isConsegna && !indirizzo.trim()) return false;
-    return true;
-  }, [nome, telefono, data, ora, ordine, indirizzo, isConsegna]);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setErr("");
-    setOkMsg("");
-
-    if (!canSubmit) {
-      setErr("Compila i campi obbligatori.");
-      return;
-    }
-
-    setLoading(true);
+export default function HomePage() {
+  const biz = useMemo(() => {
     try {
-      const payload = {
-        nome: nome.trim(),
-        telefono: telefono.trim(),
-        tipo,
-        data,
-        ora,
-        allergeni: allergeni.trim(),
-        ordine: ordine.trim(),
-        indirizzo: isConsegna ? indirizzo.trim() : "",
-        note: note.trim(),
-        canale: "APP",
-        honeypot,
-      };
-
-      const r = await fetch("/api/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const j = await r.json().catch(() => null);
-
-      if (!r.ok) {
-        setErr(j?.error || "Errore invio ordine. Riprova.");
-        return;
-      }
-
-      setOkMsg("✅ Ordine inviato! Ti confermiamo su WhatsApp/telefono.");
-      setOrdine("");
-      setAllergeni("");
-      setNote("");
-      if (!isConsegna) setIndirizzo("");
+      return getBusinessConfig() as any;
     } catch {
-      setErr("Errore rete. Controlla connessione e riprova.");
-    } finally {
-      setLoading(false);
+      return {} as any;
     }
-  }
+  }, []);
+
+  // Fallback (se config manca qualcosa)
+  const brandTop = biz?.labelTop ?? "GALAXBOT AI · BARBER SHOP";
+  const title = biz?.title ?? "Idee per la Testa";
+  const subtitle =
+    biz?.subtitle ??
+    "Un assistente virtuale che gestisce richieste, prenotazioni e cancellazioni per il tuo barber shop, 24 ore su 24.";
+
+  const services = biz?.servicesShort ?? "Taglio, barba, sfumature, styling, bimbi";
+  const city = biz?.city ?? "Castelnuovo Vomano (TE)";
+  const phone = biz?.phone ?? "333 123 4567";
+
+  const openHoursTitle = biz?.hoursTitle ?? "Orari di apertura";
+  const openHoursLines: string[] =
+    biz?.hoursLines ?? ["Lunedì–Sabato: 8:30–12:30 e 15:00–20:00", "Domenica: chiuso"];
+
+  const [showHelp, setShowHelp] = useState(false);
+
+  // ref con non-null assertion per evitare rogne TypeScript sui ref
+  const refBook = useRef<HTMLDivElement>(null!);
+  const refCancel = useRef<HTMLDivElement>(null!);
+
+  const scrollTo = (ref: React.RefObject<HTMLDivElement>) => {
+    ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const styles: Record<string, React.CSSProperties> = {
+    page: {
+      minHeight: "100vh",
+      background:
+        "radial-gradient(900px 600px at 18% 10%, rgba(120,170,255,0.35), transparent 55%), radial-gradient(900px 600px at 80% 20%, rgba(255,90,90,0.28), transparent 55%), linear-gradient(180deg, #061a3a 0%, #062a6a 55%, #041534 100%)",
+      color: "rgba(255,255,255,0.92)",
+      padding: "26px 14px 40px",
+    },
+    shell: { maxWidth: 980, margin: "0 auto" },
+    topPill: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 10,
+      padding: "7px 12px",
+      borderRadius: 999,
+      background: "rgba(255,255,255,0.10)",
+      border: "1px solid rgba(255,255,255,0.14)",
+      backdropFilter: "blur(10px)",
+      fontSize: 12,
+      letterSpacing: 0.8,
+      textTransform: "uppercase",
+    },
+    hero: { marginTop: 12, padding: "14px 2px 10px" },
+    h1: {
+      fontSize: 44,
+      lineHeight: 1.05,
+      margin: "8px 0 10px",
+      fontWeight: 800,
+      textShadow: "0 12px 40px rgba(0,0,0,0.35)",
+    },
+    subtitle: {
+      fontSize: 16,
+      lineHeight: 1.5,
+      opacity: 0.9,
+      maxWidth: 760,
+      marginBottom: 14,
+    },
+    actionsRow: { display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10 },
+    btn: {
+      cursor: "pointer",
+      padding: "10px 14px",
+      borderRadius: 12,
+      fontWeight: 700,
+      fontSize: 14,
+      color: "rgba(255,255,255,0.95)",
+      background: "rgba(255,255,255,0.14)",
+      border: "1px solid rgba(255,255,255,0.16)",
+      borderLeft: "1px solid rgba(255,255,255,0.10)",
+      transition: "transform .08s ease, filter .08s ease",
+    },
+    btnPrimary: {
+      background: "linear-gradient(90deg, #ff4b4b 0%, #ff7a3d 55%, #ffcc5c 120%)",
+      color: "#07142a",
+    },
+    btnBlue: {
+      background: "linear-gradient(90deg, #2f7dff 0%, #49c6ff 120%)",
+      color: "#061a3a",
+    },
+    smallHint: { marginTop: 10, fontSize: 13, opacity: 0.85 },
+    grid: { marginTop: 18, display: "grid", gridTemplateColumns: "1fr", gap: 16 },
+    card: {
+      borderRadius: 18,
+      background: "rgba(255,255,255,0.08)",
+      border: "1px solid rgba(255,255,255,0.14)",
+      boxShadow: "0 18px 55px rgba(0,0,0,0.28)",
+      overflow: "hidden",
+    },
+    cardInner: { padding: "16px 16px 14px" },
+    cardTitle: {
+      fontSize: 18,
+      fontWeight: 800,
+      margin: 0,
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+    },
+    cardSub: { marginTop: 6, fontSize: 13, opacity: 0.86, lineHeight: 1.45 },
+    list: { marginTop: 10, marginBottom: 0, paddingLeft: 18, lineHeight: 1.6 },
+    divider: { height: 1, background: "rgba(255,255,255,0.10)" },
+    helpTop: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+    },
+    helpBtn: {
+      cursor: "pointer",
+      padding: "10px 14px",
+      borderRadius: 12,
+      fontWeight: 800,
+      fontSize: 14,
+      border: "0",
+      background: showHelp
+        ? "rgba(255,255,255,0.14)"
+        : "linear-gradient(90deg, #2f7dff 0%, #49c6ff 120%)",
+      color: showHelp ? "rgba(255,255,255,0.95)" : "#061a3a",
+    },
+    footer: {
+      marginTop: 18,
+      textAlign: "center",
+      opacity: 0.75,
+      fontSize: 12,
+      padding: "10px 0 2px",
+    },
+  };
 
   return (
-    <div className={styles.page}>
-      <div className={styles.shell}>
-        <header className={styles.header}>
-          <div className={styles.brand}>
-            <div className={styles.logo} aria-hidden>
-              🍕
-            </div>
-            <div>
-              <h1 className={styles.h1}>Pala Pizza</h1>
-              <p className={styles.sub}>Ordina in 30 secondi. Ricevi conferma via WhatsApp/telefono.</p>
-            </div>
+    <main style={styles.page}>
+      <div style={styles.shell}>
+        <div style={styles.topPill}>
+          <span>{brandTop}</span>
+        </div>
+
+        <header style={styles.hero}>
+          <h1 style={styles.h1}>
+            {title} <span aria-hidden>💈</span>
+          </h1>
+          <p style={styles.subtitle}>{subtitle}</p>
+
+          <div style={styles.actionsRow}>
+            <button style={{ ...styles.btn, ...styles.btnPrimary }} onClick={() => scrollTo(refBook)}>
+              Prenota ora
+            </button>
+            <button style={{ ...styles.btn, ...styles.btnBlue }} onClick={() => scrollTo(refCancel)}>
+              Annulla
+            </button>
+            <button style={styles.btn} onClick={() => setShowHelp((v) => !v)}>
+              {showHelp ? "Chiudi assistenza" : "Assistenza"}
+            </button>
+          </div>
+
+          <div style={styles.smallHint}>
+            Prenoti in pochi secondi: scegli data + ora disponibile. Se ti serve, annulli con gli stessi dati.
           </div>
         </header>
 
-        <div className={styles.grid}>
-          {/* FORM */}
-          <section className={styles.card}>
-            <div className={styles.cardTop}>
-              <div>
-                <div className={styles.cardTitle}>Invia ordine</div>
-                <div className={styles.cardSub}>
-                  Obbligatori: nome, telefono, tipo, data, ora, ordine (e indirizzo se consegna).
+        <section style={styles.grid}>
+          {/* INFO */}
+          <div style={styles.card}>
+            <div style={styles.cardInner}>
+              <h2 style={styles.cardTitle}>Informazioni principali</h2>
+              <ul style={styles.list}>
+                <li>
+                  <b>Servizi:</b> {services}
+                </li>
+                <li>
+                  <b>Dove:</b> {city}
+                </li>
+                <li>
+                  <b>Telefono:</b>{" "}
+                  <a
+                    href={`tel:${String(phone).replace(/\s/g, "")}`}
+                    style={{ color: "rgba(255,255,255,0.95)", textDecoration: "underline" }}
+                  >
+                    {phone}
+                  </a>
+                </li>
+              </ul>
+            </div>
+            <div style={styles.divider} />
+            <div style={styles.cardInner}>
+              <h3 style={{ ...styles.cardTitle, fontSize: 16, marginTop: 0 }}>{openHoursTitle}</h3>
+              <ul style={styles.list}>
+                {openHoursLines.map((l, i) => (
+                  <li key={i}>{l}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          {/* ASSISTENZA (Chat a pulsante) */}
+          <div style={styles.card}>
+            {/* ✅ qui era il bug: avevi due "style" nello stesso div */}
+            <div style={{ ...styles.cardInner, paddingBottom: 10 }}>
+              <div style={styles.helpTop}>
+                <div>
+                  <h2 style={styles.cardTitle}>
+                    Assistenza <span aria-hidden>💬</span>
+                  </h2>
+                  <div style={styles.cardSub}>
+                    Domande su servizi, orari o info generali. Per prenotare usa sempre il box “Prenota adesso”.
+                  </div>
                 </div>
+
+                <button style={styles.helpBtn} onClick={() => setShowHelp((v) => !v)}>
+                  {showHelp ? "Nascondi" : "Apri chat"}
+                </button>
               </div>
             </div>
 
-            {err ? <div className={styles.error}>⚠️ {err}</div> : null}
-            {okMsg ? <div className={styles.success}>{okMsg}</div> : null}
-
-            <form className={styles.form} onSubmit={submit} autoComplete="off">
-              {/* honeypot anti-bot */}
-              <input
-                value={honeypot}
-                onChange={(e) => setHoneypot(e.target.value)}
-                className={styles.honeypot}
-                tabIndex={-1}
-                aria-hidden="true"
-              />
-
-              <div className={styles.grid2}>
-                <div className={styles.field}>
-                  <label className={styles.label}>Nome *</label>
-                  <input
-                    className={styles.input}
-                    value={nome}
-                    onChange={(e) => setNome(e.target.value)}
-                    placeholder="Es. Gennaro"
-                  />
+            {showHelp ? (
+              <>
+                <div style={styles.divider} />
+                <div style={styles.cardInner}>
+                  <ChatBox />
                 </div>
-
-                <div className={styles.field}>
-                  <label className={styles.label}>Telefono *</label>
-                  <input
-                    className={styles.input}
-                    value={telefono}
-                    onChange={(e) => setTelefono(e.target.value)}
-                    placeholder="Es. 327..."
-                    inputMode="tel"
-                  />
+              </>
+            ) : (
+              <div style={{ ...styles.cardInner, paddingTop: 0 }}>
+                <div style={{ ...styles.cardSub, marginTop: 0 }}>
+                  Premi <b>“Apri chat”</b> se ti serve aiuto.
                 </div>
               </div>
+            )}
+          </div>
 
-              <div className={styles.grid3}>
-                <div className={styles.field}>
-                  <label className={styles.label}>Tipo *</label>
-                  <select className={styles.select} value={tipo} onChange={(e) => setTipo(e.target.value as Tipo)}>
-                    <option value="ASPORTO">Asporto</option>
-                    <option value="TAVOLO">Tavolo</option>
-                    <option value="CONSEGNA">Consegna</option>
-                  </select>
-                </div>
-
-                <div className={styles.field}>
-                  <label className={styles.label}>Data *</label>
-                  <input className={styles.input} type="date" value={data} onChange={(e) => setData(e.target.value)} />
-                </div>
-
-                <div className={styles.field}>
-                  <label className={styles.label}>Ora *</label>
-                  <input className={styles.input} type="time" value={ora} onChange={(e) => setOra(e.target.value)} />
-                </div>
+          {/* PRENOTA */}
+          <div ref={refBook} style={styles.card}>
+            <div style={styles.cardInner}>
+              <h2 style={styles.cardTitle}>Prenota adesso ✅</h2>
+              <div style={styles.cardSub}>
+                Ti mostriamo <b>solo gli orari disponibili</b> per la data scelta.
               </div>
-
-              {isConsegna ? (
-                <div className={styles.field}>
-                  <label className={styles.label}>Indirizzo *</label>
-                  <input
-                    className={styles.input}
-                    value={indirizzo}
-                    onChange={(e) => setIndirizzo(e.target.value)}
-                    placeholder="Via, numero, citofono…"
-                  />
-                </div>
-              ) : null}
-
-              <div className={styles.field}>
-                <label className={styles.label}>Ordine *</label>
-                <textarea
-                  className={styles.textarea}
-                  value={ordine}
-                  onChange={(e) => setOrdine(e.target.value)}
-                  placeholder="Es. 2 Margherite + 1 Diavola + 1 Coca Cola…"
-                />
-                <div className={styles.tip}>Scrivi anche impasto/taglia, bibite, e se hai una preferenza orario.</div>
-              </div>
-
-              <div className={styles.grid2}>
-                <div className={styles.field}>
-                  <label className={styles.label}>Allergeni</label>
-                  <input
-                    className={styles.input}
-                    value={allergeni}
-                    onChange={(e) => setAllergeni(e.target.value)}
-                    placeholder="Es. lattosio, glutine…"
-                  />
-                </div>
-
-                <div className={styles.field}>
-                  <label className={styles.label}>Note</label>
-                  <input
-                    className={styles.input}
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder="Es. ben cotta, senza cipolla…"
-                  />
-                </div>
-              </div>
-
-              <button className={styles.btn} type="submit" disabled={loading || !canSubmit}>
-                {loading ? "Invio…" : "Invia ordine"}
-              </button>
-
-              <div className={styles.footerHint}>Dopo l’invio, lo staff ti darà conferma.</div>
-            </form>
-          </section>
-
-          {/* BOT */}
-          <section className={styles.botSection}>
-            <div className={styles.botTitle}>Hai dubbi? Chiedi al bot 🍕</div>
-            <div className={styles.botSub}>Orari, consegna/asporto, allergeni, come scrivere l’ordine.</div>
-            <div className={styles.botBox}>
-              <ChatBox />
             </div>
-          </section>
-        </div>
+            <div style={styles.divider} />
+            <div style={styles.cardInner}>
+              <FastBookingForm />
+            </div>
+          </div>
+
+          {/* ANNULLA */}
+          <div ref={refCancel} style={styles.card}>
+            <div style={styles.cardInner}>
+              <h2 style={styles.cardTitle}>Annulla prenotazione ✖️</h2>
+              <div style={styles.cardSub}>
+                Usa lo stesso <b>telefono</b> e la stessa <b>data + ora</b> della prenotazione.
+              </div>
+            </div>
+            <div style={styles.divider} />
+            <div style={styles.cardInner}>
+              <CancelBookingForm />
+            </div>
+          </div>
+        </section>
+
+        <footer style={styles.footer}>Powered by GalaxBot AI</footer>
       </div>
-    </div>
+    </main>
   );
 }

@@ -1,670 +1,932 @@
+// app/pannello/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import styles from "./pannello.module.css";
+import React, { useEffect, useMemo, useState, type CSSProperties } from "react";
 
-type OrderRow = {
+type BookingStatus = "NUOVA" | "CONFERMATA" | "ANNULLATA" | string;
+
+type AdminRow = {
   id: string;
-  timestamp: string;
-  nome: string;
-  telefono: string;
-  tipo: string; // TAVOLO | ASPORTO | CONSEGNA
-  dataISO: string; // YYYY-MM-DD
-  ora: string; // HH:mm
-  allergeni: string;
-  ordine: string;
-  indirizzo: string;
-  stato: string; // NUOVO | CONFERMATO | ANNULLATO | CONSEGNATO
-  canale: string; // APP | BOT | MANUALE
-  note: string;
+  rowNumber?: number;
+  timestamp?: string;
+
+  nome?: string;
+  telefono?: string;
+  servizio?: string;
+
+  dataISO?: string; // yyyy-mm-dd
+  ora?: string; // HH:mm
+
+  note?: string;
+  stato?: BookingStatus;
+  canale?: string;
 };
 
-const AUTO_REFRESH_MS = 15000;
+type MeResponse =
+  | { ok: true; loggedIn?: boolean; isLoggedIn?: boolean; authenticated?: boolean }
+  | { ok: false; error?: string; details?: any };
 
-function s(v: any) {
-  return v === null || v === undefined ? "" : String(v);
+type ListResponse =
+  | { ok: true; rows: AdminRow[]; count?: number }
+  | { ok: false; error?: string; details?: any };
+
+type UpdateResponse =
+  | { ok: true; status?: string; message?: string }
+  | { ok: false; error?: string; conflict?: boolean; details?: any };
+
+function normStatus(s?: string): BookingStatus {
+  const up = (s || "").toUpperCase().trim();
+  if (up === "CONFERMATA" || up === "ANNULLATA" || up === "NUOVA") return up;
+  return up || "NUOVA";
 }
 
-function normalizePhone(raw: string) {
-  return s(raw).replace(/[^\d+]/g, "");
+function safeTel(t?: string) {
+  return String(t || "").replace(/[^\d]/g, "");
 }
 
-// ✅ prova a rendere "327..." -> "39..." (Italia) quando manca prefisso
-function phoneForWhatsApp(raw: string) {
-  let p = normalizePhone(raw).replace("+", "").trim();
-  if (!p) return "";
-  if (p.startsWith("00")) p = p.slice(2);
-
-  // se non ha prefisso e sembra italiano (10 cifre), aggiungi 39
-  if (!p.startsWith("39") && /^\d{10}$/.test(p)) p = `39${p}`;
-
-  return p;
+function toITDate(iso?: string) {
+  const s = String(iso || "").trim();
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s;
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return s || "—";
+  return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
-function isMobileUA() {
-  if (typeof navigator === "undefined") return false;
-  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
-}
-
-// ✅ "12:30" ok, ISO "1899-12-30T..." -> "HH:mm"
-function normalizeTime(value: any) {
-  const str = s(value).trim();
-  if (!str) return "";
-  if (/^\d{2}:\d{2}$/.test(str)) return str;
-
-  // prova a prendere HH:mm dentro una stringa più lunga
-  const m = /(\d{1,2}):(\d{2})/.exec(str);
-  if (m) return `${String(Number(m[1])).padStart(2, "0")}:${m[2]}`;
-
-  // prova parse date
-  const d = new Date(str);
-  if (Number.isFinite(d.getTime())) {
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mm = String(d.getMinutes()).padStart(2, "0");
-    return `${hh}:${mm}`;
-  }
-
-  return str;
-}
-
-function toDateISO(value: any): string {
-  const str = s(value).trim();
-  if (!str) return "";
-  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-
-  const mIt = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(str);
-  if (mIt) return `${mIt[3]}-${mIt[2]}-${mIt[1]}`;
-
-  const d = new Date(str);
-  if (!Number.isFinite(d.getTime())) return str;
-
+function todayISO() {
+  const d = new Date();
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function formatDateIT(iso: string) {
-  if (!iso) return "—";
-  const [y, m, d] = iso.split("-");
-  if (!y || !m || !d) return iso;
-  return `${d}/${m}/${y}`;
+function addDaysISO(iso: string, days: number) {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }
 
-function statusKey(raw: any) {
-  const up = s(raw).trim().toUpperCase();
-  if (up === "NUOVA") return "NUOVO";
-  if (up === "CONFERMATA") return "CONFERMATO";
-  if (up === "ANNULLATA") return "ANNULLATO";
-  return up || "NUOVO";
+async function safeJson(res: Response) {
+  const text = await res.text().catch(() => "");
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { ok: false, error: "Risposta non valida dal server.", details: text };
+  }
 }
 
-function statusClass(stato: string) {
-  const st = statusKey(stato);
-  if (st === "CONFERMATO") return `${styles.badge} ${styles.badgeGreen}`;
-  if (st === "CONSEGNATO") return `${styles.badge} ${styles.badgeYellow}`;
-  if (st === "ANNULLATO") return `${styles.badge} ${styles.badgeRed}`;
-  return `${styles.badge} ${styles.badgeBlue}`;
-}
-
-function typeClass(tipo: string) {
-  const t = s(tipo).trim().toUpperCase();
-  if (t === "CONSEGNA") return `${styles.badge} ${styles.badgeDeliver}`;
-  if (t === "ASPORTO") return `${styles.badge} ${styles.badgeTake}`;
-  return `${styles.badge} ${styles.badgeTable}`;
-}
-
-function pick(objOrArr: any, idx: number, keys: string[]) {
-  if (Array.isArray(objOrArr)) return objOrArr[idx];
-  const o = objOrArr || {};
-  for (const k of keys) {
-    if (o[k] !== undefined && o[k] !== null) return o[k];
-    const low = k.toLowerCase();
-    if (o[low] !== undefined && o[low] !== null) return o[low];
-  }
-  const map: Record<string, any> = {};
-  for (const kk of Object.keys(o)) map[kk.toLowerCase()] = o[kk];
-  for (const k of keys) {
-    const v = map[k.toLowerCase()];
-    if (v !== undefined && v !== null) return v;
-  }
-  return undefined;
-}
-
-function buildStatusWaText(r: OrderRow, newStatus: "CONFERMATO" | "CONSEGNATO" | "ANNULLATO") {
-  const base =
-    `Ciao ${r.nome}! 👋\n` +
-    `Ordine ${formatDateIT(r.dataISO)} ore ${r.ora}\n` +
-    `Tipo: ${r.tipo}\n` +
-    `Ordine: ${r.ordine}\n` +
-    `${r.allergeni ? `Allergeni: ${r.allergeni}\n` : ""}` +
-    `${r.indirizzo ? `Indirizzo: ${r.indirizzo}\n` : ""}`;
-
-  if (newStatus === "CONFERMATO") {
-    return `✅ CONFERMATO!\n${base}\nPerfetto, il tuo ordine è confermato. 🍕`;
-  }
-  if (newStatus === "CONSEGNATO") {
-    return `🚚 CONSEGNATO!\n${base}\nGrazie! Buon appetito 😄`;
-  }
-  return `❌ ANNULLATO\n${base}\nPurtroppo non riusciamo a gestire l’ordine ora.`;
-}
-
-function buildWhatsAppUrl(phoneRaw: string, text: string) {
-  const phone = phoneForWhatsApp(phoneRaw);
-  if (!phone) return "";
-
-  // ✅ mobile: wa.me (apre app se installata)
-  if (isMobileUA()) {
-    return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
-  }
-
-  // ✅ desktop: web whatsapp
-  const url = new URL("https://web.whatsapp.com/send");
-  url.searchParams.set("phone", phone);
-  url.searchParams.set("text", text);
-  return url.toString();
-}
-
-function openWhatsApp(url: string) {
-  if (!url) return;
-  // tenta nuova scheda: se riesce tu rimani sul pannello
-  const w = window.open(url, "_blank", "noopener,noreferrer");
-  // fallback (popup bloccato): apre nello stesso tab
-  if (!w) window.location.assign(url);
-}
-
-export default function PannelloOrdiniPalaPizza() {
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
-  const [rows, setRows] = useState<OrderRow[]>([]);
-  const [updatingId, setUpdatingId] = useState<string>("");
-
-  const [q, setQ] = useState("");
-  const [tipo, setTipo] = useState<"TUTTI" | "TAVOLO" | "ASPORTO" | "CONSEGNA">("TUTTI");
-  const [stato, setStato] = useState<"TUTTI" | "NUOVO" | "CONFERMATO" | "ANNULLATO" | "CONSEGNATO">("TUTTI");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-
-  // ✅ evita overlap refresh
-  const loadingRef = useRef(false);
-
-  async function load(opts?: { silent?: boolean }) {
-    const silent = !!opts?.silent;
-
-    // evita chiamate sovrapposte
-    if (loadingRef.current) return;
-    loadingRef.current = true;
-
-    if (!silent) setLoading(true);
-    setErr("");
-
-    try {
-      const r = await fetch("/api/admin/bookings", { method: "GET", cache: "no-store" });
-
-      if (r.status === 401) {
-        window.location.href = "/pannello/login";
-        return;
-      }
-
-      const data = await r.json().catch(() => null);
-      if (!r.ok || !data?.ok) {
-        setErr(data?.error || "Errore caricando ordini.");
-        if (!silent) setRows([]);
-        return;
-      }
-
-      const list: any[] = Array.isArray(data.rows) ? data.rows : [];
-
-      const parsed: OrderRow[] = list.map((item: any, idx: number) => {
-        const dataISO = toDateISO(pick(item, 4, ["Data", "date", "dataISO", "dataIso", "data"]));
-        const id = s(pick(item, 12, ["ID", "id"])).trim();
-
-        return {
-          id: id || `fallback-${s(pick(item, 0, ["Timestamp", "timestamp"]))}-${idx}`,
-          timestamp: s(pick(item, 0, ["Timestamp", "timestamp"])).trim(),
-          nome: s(pick(item, 1, ["Nome", "name", "nome"])).trim(),
-          telefono: s(pick(item, 2, ["Telefono", "phone", "telefono"])).trim(),
-          tipo: s(pick(item, 3, ["Tipo", "type", "tipo"])).trim().toUpperCase() || "TAVOLO",
-          dataISO,
-          ora: normalizeTime(pick(item, 5, ["Ora", "time", "ora"])),
-          allergeni: s(pick(item, 6, ["Allergeni", "allergens", "allergeni"])).trim(),
-          ordine: s(pick(item, 7, ["Ordine", "order", "ordine"])).trim(),
-          indirizzo: s(pick(item, 8, ["Indirizzo", "address", "indirizzo"])).trim(),
-          stato: statusKey(pick(item, 9, ["Stato", "status", "stato"])),
-          canale: s(pick(item, 10, ["Bot o Manuale", "canale", "source"])).trim().toUpperCase(),
-          note: s(pick(item, 11, ["Note", "note"])).trim(),
-        };
-      });
-
-      parsed.sort((a, b) => {
-        const da = `${a.dataISO} ${a.ora}`.trim();
-        const db = `${b.dataISO} ${b.ora}`.trim();
-        if (da < db) return -1;
-        if (da > db) return 1;
-        return (a.timestamp || "").localeCompare(b.timestamp || "");
-      });
-
-      setRows(parsed);
-    } catch (e: any) {
-      setErr(e?.message || "Errore rete.");
-      if (!silent) setRows([]);
-    } finally {
-      if (!silent) setLoading(false);
-      loadingRef.current = false;
-    }
-  }
-
-  async function logout() {
-    await fetch("/api/admin/logout", { method: "POST" }).catch(() => null);
-    window.location.href = "/pannello/login";
-  }
-
-  async function setStatus(id: string, newStatus: "CONFERMATO" | "CONSEGNATO" | "ANNULLATO") {
-    setErr("");
-    if (!id) {
-      setErr("ID mancante: controlla che lo script scriva la colonna ID.");
-      return;
-    }
-
-    setUpdatingId(id);
-    try {
-      const r = await fetch("/api/orders/status", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, stato: newStatus }),
-      });
-
-      const j = await r.json().catch(() => null);
-
-      if (r.status === 401) {
-        window.location.href = "/pannello/login";
-        return;
-      }
-      if (!r.ok || !j?.ok) {
-        setErr(j?.error || "Errore aggiornando lo stato.");
-        return;
-      }
-
-      setRows((prev) => prev.map((x) => (x.id === id ? { ...x, stato: newStatus } : x)));
-    } catch {
-      setErr("Errore rete aggiornando lo stato.");
-    } finally {
-      setUpdatingId("");
-    }
-  }
-
-  async function statusAndWhatsapp(r: OrderRow, newStatus: "CONFERMATO" | "CONSEGNATO" | "ANNULLATO") {
-    const waText = buildStatusWaText(r, newStatus);
-    const waHref = buildWhatsAppUrl(r.telefono, waText);
-
-    // ✅ apri WhatsApp subito
-    if (waHref) openWhatsApp(waHref);
-
-    // ✅ poi aggiorna stato
-    await setStatus(r.id, newStatus);
-
-    // ✅ refresh “silenzioso” (senza flicker)
-    load({ silent: true });
-  }
-
-  // ✅ prima load
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ✅ auto-refresh: solo se tab visibile e NON mentre stai aggiornando stato
-  useEffect(() => {
-    const t = window.setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      if (updatingId) return; // evita refresh mentre clicchi
-      load({ silent: true });
-    }, AUTO_REFRESH_MS);
-
-    return () => window.clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [updatingId]);
-
-  // ✅ quando torni al pannello (dopo WhatsApp), aggiorna
-  useEffect(() => {
-    const onVis = () => {
-      if (document.visibilityState === "visible") load({ silent: true });
+function statusPillStyle(st: BookingStatus): CSSProperties {
+  const s = normStatus(st);
+  if (s === "CONFERMATA") {
+    return {
+      background: "rgba(34,197,94,0.14)",
+      border: "1px solid rgba(34,197,94,0.35)",
+      color: "rgba(15,23,42,0.92)",
     };
-    document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }
+  if (s === "ANNULLATA") {
+    return {
+      background: "rgba(239,68,68,0.12)",
+      border: "1px solid rgba(239,68,68,0.30)",
+      color: "rgba(15,23,42,0.92)",
+    };
+  }
+  return {
+    background: "rgba(245,158,11,0.14)",
+    border: "1px solid rgba(245,158,11,0.30)",
+    color: "rgba(15,23,42,0.92)",
+  };
+}
+
+// ✅ nome vivace (non rosa) – blu acceso, leggibilissimo
+function nameBadgeStyle(): CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "8px 12px",
+    borderRadius: 999,
+    border: "1px solid rgba(29,78,216,0.35)",
+    background: "linear-gradient(135deg, rgba(29,78,216,0.95), rgba(37,99,235,0.78))",
+    color: "white",
+    fontWeight: 1000,
+    letterSpacing: 0.2,
+    textTransform: "none",
+    boxShadow: "0 10px 22px rgba(29,78,216,0.18)",
+  };
+}
+
+// ✅ divisori ROSSO/BLU alternati
+function accentForIndex(i: number) {
+  const isBlue = i % 2 === 0;
+  const bar: CSSProperties = {
+    position: "absolute",
+    inset: "0 auto 0 0",
+    width: 8,
+    background: isBlue
+      ? "linear-gradient(180deg, rgba(37,99,235,0.80), rgba(37,99,235,0.20))"
+      : "linear-gradient(180deg, rgba(239,68,68,0.78), rgba(239,68,68,0.18))",
+  };
+
+  const borderGlow: CSSProperties = {
+    border: isBlue ? "1px solid rgba(37,99,235,0.22)" : "1px solid rgba(239,68,68,0.20)",
+    boxShadow: isBlue
+      ? "0 10px 26px rgba(37,99,235,0.10)"
+      : "0 10px 26px rgba(239,68,68,0.08)",
+  };
+
+  return { bar, borderGlow };
+}
+
+function toastStyle(type: "ok" | "err"): CSSProperties {
+  return {
+    pointerEvents: "none",
+    padding: "10px 12px",
+    borderRadius: 14,
+    border: type === "ok" ? "1px solid rgba(34,197,94,0.32)" : "1px solid rgba(239,68,68,0.30)",
+    background: type === "ok" ? "rgba(34,197,94,0.14)" : "rgba(239,68,68,0.14)",
+    color: "rgba(15,23,42,0.92)",
+    fontWeight: 950,
+    boxShadow: "0 16px 40px rgba(0,0,0,0.18)",
+    maxWidth: 860,
+    width: "100%",
+    textAlign: "center",
+  };
+}
+
+function waLink(phone: string, text: string) {
+  const p = safeTel(phone);
+  const msg = encodeURIComponent(text);
+  return `https://wa.me/${p}?text=${msg}`;
+}
+
+function buildConfirmMsg(r: AdminRow) {
+  const nome = (r.nome || "").trim();
+  const data = toITDate(r.dataISO);
+  const ora = r.ora || "—";
+  const serv = (r.servizio || "appuntamento").toString();
+  return `Ciao${nome ? " " + nome : ""}! ✅ Il tuo appuntamento è CONFERMATO per ${data} alle ${ora} (${serv}). A presto!`;
+}
+
+function buildCancelMsg(r: AdminRow) {
+  const nome = (r.nome || "").trim();
+  const data = toITDate(r.dataISO);
+  const ora = r.ora || "—";
+  const serv = (r.servizio || "appuntamento").toString();
+  return `Ciao${nome ? " " + nome : ""}. ❌ Il tuo appuntamento è ANNULLATO (${serv}) del ${data} alle ${ora}. Se vuoi riprenotare, scrivimi qui.`;
+}
+
+export default function PannelloAdmin() {
+  const [checking, setChecking] = useState(true);
+  const [loggedIn, setLoggedIn] = useState(false);
+
+  const [password, setPassword] = useState("");
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  const [rows, setRows] = useState<AdminRow[]>([]);
+  const [loadingRows, setLoadingRows] = useState(false);
+  const [rowsError, setRowsError] = useState<string | null>(null);
+
+  // ✅ filtri giorni
+  const [dayMode, setDayMode] = useState<"TUTTO" | "OGGI" | "DOMANI" | "7" | "DATA">("TUTTO");
+  const [pickDate, setPickDate] = useState<string>(todayISO());
+
+  // ✅ filtro stato messo in un posto pulito (sotto ai giorni)
+  const [statusFilter, setStatusFilter] = useState<"TUTTE" | "NUOVA" | "CONFERMATA" | "ANNULLATA">("TUTTE");
+
+  const [toast, setToast] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
+  const showToast = (type: "ok" | "err", msg: string) => {
+    setToast({ type, msg });
+    window.setTimeout(() => setToast(null), 2400);
+  };
 
   const counts = useMemo(() => {
-    const c = { TOT: rows.length, NUOVO: 0, CONFERMATO: 0, ANNULLATO: 0, CONSEGNATO: 0 };
-    for (const r of rows) {
-      const st = statusKey(r.stato);
-      if (st === "NUOVO") c.NUOVO++;
-      else if (st === "CONFERMATO") c.CONFERMATO++;
-      else if (st === "ANNULLATO") c.ANNULLATO++;
-      else if (st === "CONSEGNATO") c.CONSEGNATO++;
-    }
+    const c = { NUOVA: 0, CONFERMATA: 0, ANNULLATA: 0 };
+    rows.forEach((r) => {
+      const s = normStatus(r.stato);
+      if (s === "NUOVA") c.NUOVA++;
+      if (s === "CONFERMATA") c.CONFERMATA++;
+      if (s === "ANNULLATA") c.ANNULLATA++;
+    });
     return c;
   }, [rows]);
 
   const filtered = useMemo(() => {
-    const qq = q.trim().toLowerCase();
-    return rows.filter((r) => {
-      if (tipo !== "TUTTI" && r.tipo !== tipo) return false;
+    const t = todayISO();
+    let fromISO: string | null = null;
+    let toISO: string | null = null;
 
-      const st = statusKey(r.stato);
-      if (stato !== "TUTTI" && st !== stato) return false;
+    if (dayMode === "OGGI") {
+      fromISO = t;
+      toISO = t;
+    } else if (dayMode === "DOMANI") {
+      fromISO = addDaysISO(t, 1);
+      toISO = fromISO;
+    } else if (dayMode === "7") {
+      fromISO = t;
+      toISO = addDaysISO(t, 7);
+    } else if (dayMode === "DATA") {
+      fromISO = pickDate;
+      toISO = pickDate;
+    }
 
-      if (from && r.dataISO && r.dataISO < from) return false;
-      if (to && r.dataISO && r.dataISO > to) return false;
+    return rows
+      .filter((r) => {
+        if (!fromISO || !toISO) return true;
+        const d = String(r.dataISO || "").trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return true;
+        return d >= fromISO && d <= toISO;
+      })
+      .filter((r) => {
+        if (statusFilter === "TUTTE") return true;
+        return normStatus(r.stato) === statusFilter;
+      })
+      .sort((a, b) => {
+        const da = String(a.dataISO || "");
+        const db = String(b.dataISO || "");
+        if (da !== db) return da.localeCompare(db);
+        const ta = String(a.ora || "");
+        const tb = String(b.ora || "");
+        return ta.localeCompare(tb);
+      });
+  }, [rows, dayMode, pickDate, statusFilter]);
 
-      if (!qq) return true;
-      const blob = [
-        r.nome,
-        r.telefono,
-        r.tipo,
-        r.dataISO,
-        r.ora,
-        r.ordine,
-        r.allergeni,
-        r.indirizzo,
-        r.stato,
-        r.canale,
-        r.note,
-        r.id,
-      ]
-        .join(" ")
-        .toLowerCase();
-      return blob.includes(qq);
-    });
-  }, [rows, q, tipo, stato, from, to]);
+  const checkMe = async () => {
+    setChecking(true);
+    setAuthError(null);
+    try {
+      const res = await fetch("/api/admin/me", { credentials: "include" });
+      const data: MeResponse = await safeJson(res);
+      const ok = (data as any)?.ok === true;
+      const li = Boolean((data as any)?.loggedIn ?? (data as any)?.isLoggedIn ?? (data as any)?.authenticated);
+      setLoggedIn(ok && li);
+    } catch {
+      setLoggedIn(false);
+    } finally {
+      setChecking(false);
+    }
+  };
 
-  const busyStyle = (id: string): CSSProperties =>
-    updatingId === id ? { opacity: 0.6, pointerEvents: "none" } : {};
+  const loadRows = async () => {
+    setLoadingRows(true);
+    setRowsError(null);
+    try {
+      const res = await fetch("/api/admin/bookings?limit=800", { credentials: "include" });
+      const data: ListResponse = await safeJson(res);
+
+      if (!(data as any)?.ok) {
+        setRowsError((data as any)?.error || "Errore nel caricamento prenotazioni.");
+        setRows([]);
+        return;
+      }
+
+      const list = Array.isArray((data as any).rows) ? (data as any).rows : [];
+      const normalized: AdminRow[] = list
+        .map((r: any) => ({
+          id: String(r?.id ?? ""),
+          rowNumber: r?.rowNumber,
+          timestamp: r?.timestamp,
+          nome: r?.nome ?? r?.name,
+          telefono: r?.telefono ?? r?.phone,
+          servizio: r?.servizio ?? r?.service,
+          dataISO: r?.dataISO ?? r?.dateISO ?? r?.date,
+          ora: r?.ora ?? r?.time,
+          note: r?.note ?? r?.notes,
+          stato: normStatus(r?.stato ?? r?.status),
+          canale: r?.canale ?? r?.channel,
+        }))
+        .filter((x: AdminRow) => x.id);
+
+      setRows(normalized);
+    } catch {
+      setRowsError("Errore rete nel caricamento prenotazioni.");
+      setRows([]);
+    } finally {
+      setLoadingRows(false);
+    }
+  };
+
+  const login = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+
+    const pw = password.trim();
+    if (!pw) {
+      setAuthError("Inserisci la password admin.");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/admin/login", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: pw }),
+      });
+
+      const data = await safeJson(res);
+      if (!(data as any)?.ok) {
+        setAuthError((data as any)?.error || "Password errata.");
+        return;
+      }
+
+      setPassword("");
+      setLoggedIn(true);
+      showToast("ok", "Accesso effettuato.");
+      await loadRows();
+    } catch {
+      setAuthError("Errore rete durante il login.");
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await fetch("/api/admin/logout", { method: "POST", credentials: "include" });
+    } catch {}
+    setLoggedIn(false);
+    setRows([]);
+    showToast("ok", "Logout effettuato.");
+  };
+
+  const setStatus = async (id: string, status: BookingStatus) => {
+    const next = normStatus(status);
+
+    // UI ottimista
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, stato: next } : r)));
+
+    try {
+      const res = await fetch("/api/admin/bookings", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status: next }),
+      });
+
+      const data: UpdateResponse = await safeJson(res);
+      if (!(data as any)?.ok) {
+        showToast("err", (data as any)?.error || "Aggiornamento stato fallito.");
+        await loadRows();
+        return;
+      }
+
+      showToast("ok", `Stato aggiornato: ${next}`);
+      await loadRows();
+    } catch {
+      showToast("err", "Errore rete: stato non aggiornato.");
+      await loadRows();
+    }
+  };
+
+  function openWhatsApp(phone: string, message: string) {
+    const p = safeTel(phone);
+    if (!p) {
+      showToast("err", "Telefono mancante: non posso aprire WhatsApp.");
+      return;
+    }
+    // ✅ apertura IMMEDIATA (non bloccata dal browser)
+    window.open(waLink(p, message), "_blank", "noopener,noreferrer");
+  }
+
+  // ✅ QUI la differenza: prima apro WhatsApp (subito), poi aggiorno lo stato
+  const confirmWhatsApp = (r: AdminRow) => {
+    openWhatsApp(r.telefono || "", buildConfirmMsg(r));
+    void setStatus(r.id, "CONFERMATA");
+  };
+
+  const cancelWhatsApp = (r: AdminRow) => {
+    openWhatsApp(r.telefono || "", buildCancelMsg(r));
+    void setStatus(r.id, "ANNULLATA");
+  };
+
+  useEffect(() => {
+    checkMe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (loggedIn) loadRows();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loggedIn]);
+
+  const styles: Record<string, CSSProperties> = {
+    page: {
+      minHeight: "100vh",
+      padding: "18px 12px 34px",
+      background:
+        "radial-gradient(900px 520px at 12% 0%, rgba(59,130,246,0.10), transparent 62%)," +
+        "radial-gradient(900px 520px at 88% 8%, rgba(15,23,42,0.08), transparent 62%)," +
+        "radial-gradient(900px 520px at 50% 100%, rgba(148,163,184,0.12), transparent 60%)," +
+        "linear-gradient(180deg, #f5f6f8 0%, #ffffff 56%, #f3f4f6 100%)",
+      color: "rgba(15,23,42,0.92)",
+      fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial",
+    },
+    container: { maxWidth: 1120, margin: "0 auto" },
+
+    header: {
+      borderRadius: 18,
+      border: "1px solid rgba(15,23,42,0.10)",
+      background: "rgba(255,255,255,0.90)",
+      boxShadow: "0 16px 40px rgba(0,0,0,0.08)",
+      overflow: "hidden",
+    },
+    headerInner: { padding: "14px 14px 12px" },
+
+    topRow: {
+      display: "flex",
+      gap: 12,
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      flexWrap: "wrap",
+    },
+    badge: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 8,
+      padding: "7px 10px",
+      borderRadius: 999,
+      border: "1px solid rgba(15,23,42,0.12)",
+      background: "rgba(15,23,42,0.04)",
+      fontSize: 12,
+      letterSpacing: 0.6,
+      textTransform: "uppercase",
+      fontWeight: 900,
+    },
+    h1: { margin: "6px 0 2px", fontSize: 28, fontWeight: 1000, letterSpacing: -0.4 },
+    sub: { margin: 0, opacity: 0.85, fontSize: 14, lineHeight: 1.35 },
+
+    chipsRow: { marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" },
+    chip: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 8,
+      padding: "8px 10px",
+      borderRadius: 999,
+      border: "1px solid rgba(15,23,42,0.12)",
+      background: "rgba(255,255,255,0.88)",
+      fontWeight: 950,
+      fontSize: 13,
+    },
+
+    btnRow: { display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" },
+    btn: {
+      border: "1px solid rgba(15,23,42,0.14)",
+      background: "rgba(255,255,255,0.92)",
+      color: "rgba(15,23,42,0.92)",
+      padding: "10px 12px",
+      borderRadius: 12,
+      cursor: "pointer",
+      fontWeight: 950,
+    },
+    btnPrimary: {
+      border: "1px solid rgba(37,99,235,0.22)",
+      background: "linear-gradient(90deg, rgba(37,99,235,0.18), rgba(37,99,235,0.08))",
+      color: "rgba(15,23,42,0.92)",
+      padding: "10px 12px",
+      borderRadius: 12,
+      cursor: "pointer",
+      fontWeight: 1000,
+    },
+    btnDanger: {
+      border: "1px solid rgba(239,68,68,0.24)",
+      background: "rgba(239,68,68,0.08)",
+      color: "rgba(15,23,42,0.92)",
+      padding: "10px 12px",
+      borderRadius: 12,
+      cursor: "pointer",
+      fontWeight: 1000,
+    },
+
+    panel: {
+      marginTop: 12,
+      borderRadius: 18,
+      border: "1px solid rgba(15,23,42,0.10)",
+      background: "rgba(255,255,255,0.90)",
+      boxShadow: "0 16px 40px rgba(0,0,0,0.08)",
+      overflow: "hidden",
+    },
+    panelHeader: {
+      padding: "12px 14px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+      borderBottom: "1px solid rgba(15,23,42,0.08)",
+      background: "linear-gradient(90deg, rgba(15,23,42,0.03), rgba(37,99,235,0.05))",
+      flexWrap: "wrap",
+    },
+    panelTitle: { fontWeight: 1000, letterSpacing: 0.2 },
+    body: { padding: 14 },
+
+    loginBox: {
+      maxWidth: 520,
+      margin: "10px auto 0",
+      padding: 14,
+      borderRadius: 16,
+      border: "1px solid rgba(15,23,42,0.12)",
+      background: "rgba(255,255,255,0.92)",
+    },
+    label: { fontWeight: 1000, opacity: 0.95, display: "block", marginBottom: 8 },
+    input: {
+      width: "100%",
+      padding: "12px 12px",
+      borderRadius: 12,
+      border: "1px solid rgba(15,23,42,0.14)",
+      background: "rgba(255,255,255,1)",
+      color: "rgba(15,23,42,0.92)",
+      outline: "none",
+      fontSize: 15,
+      fontWeight: 900,
+    },
+    helper: { marginTop: 10, opacity: 0.8, fontSize: 13, lineHeight: 1.35 },
+    error: {
+      marginTop: 10,
+      padding: "10px 12px",
+      borderRadius: 12,
+      border: "1px solid rgba(239,68,68,0.26)",
+      background: "rgba(239,68,68,0.10)",
+      color: "rgba(15,23,42,0.92)",
+      fontWeight: 950,
+      fontSize: 13,
+    },
+    ok: {
+      marginTop: 10,
+      padding: "10px 12px",
+      borderRadius: 12,
+      border: "1px solid rgba(34,197,94,0.24)",
+      background: "rgba(34,197,94,0.10)",
+      color: "rgba(15,23,42,0.92)",
+      fontWeight: 950,
+      fontSize: 13,
+    },
+
+    tools: {
+      display: "flex",
+      gap: 10,
+      flexWrap: "wrap",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 12,
+    },
+
+    pillRow: { display: "flex", gap: 8, flexWrap: "wrap" },
+    pill: {
+      padding: "9px 10px",
+      borderRadius: 999,
+      border: "1px solid rgba(15,23,42,0.12)",
+      background: "rgba(255,255,255,0.92)",
+      cursor: "pointer",
+      fontWeight: 1000,
+      fontSize: 12,
+      userSelect: "none",
+    },
+    pillActive: {
+      background: "linear-gradient(90deg, rgba(37,99,235,0.16), rgba(37,99,235,0.08))",
+      border: "1px solid rgba(37,99,235,0.22)",
+    },
+
+    list: { display: "grid", gap: 12 },
+
+    card: {
+      borderRadius: 16,
+      background: "rgba(255,255,255,0.95)",
+      padding: 12,
+      position: "relative",
+      overflow: "hidden",
+    },
+
+    cardTop: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+      flexWrap: "wrap",
+      marginBottom: 10,
+      paddingLeft: 10,
+    },
+    rightStatus: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 8,
+      padding: "7px 10px",
+      borderRadius: 999,
+      fontWeight: 1000,
+      fontSize: 12,
+    },
+
+    grid: {
+      display: "grid",
+      gap: 10,
+      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+      paddingLeft: 10,
+    },
+    box: {
+      borderRadius: 14,
+      border: "1px solid rgba(15,23,42,0.10)",
+      background: "rgba(15,23,42,0.02)",
+      padding: "10px 10px",
+    },
+    boxLabel: { fontSize: 11, fontWeight: 1000, opacity: 0.7, letterSpacing: 0.6 },
+    boxValue: { marginTop: 4, fontSize: 15, fontWeight: 1000 },
+
+    actions: {
+      display: "flex",
+      gap: 8,
+      flexWrap: "wrap",
+      marginTop: 10,
+      paddingLeft: 10,
+      alignItems: "center",
+    },
+    miniBtn: {
+      padding: "9px 10px",
+      borderRadius: 12,
+      border: "1px solid rgba(15,23,42,0.12)",
+      background: "rgba(255,255,255,0.95)",
+      color: "rgba(15,23,42,0.92)",
+      cursor: "pointer",
+      fontWeight: 1000,
+      fontSize: 12,
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 8,
+      textDecoration: "none",
+    },
+    miniGreen: { border: "1px solid rgba(34,197,94,0.26)", background: "rgba(34,197,94,0.10)" },
+    miniRed: { border: "1px solid rgba(239,68,68,0.26)", background: "rgba(239,68,68,0.10)" },
+    miniYellow: { border: "1px solid rgba(245,158,11,0.26)", background: "rgba(245,158,11,0.10)" },
+    miniBlue: { border: "1px solid rgba(37,99,235,0.22)", background: "rgba(37,99,235,0.08)" },
+
+    footer: { marginTop: 14, opacity: 0.7, fontSize: 12, textAlign: "center" },
+
+    toastWrap: {
+      position: "fixed",
+      top: 16,
+      left: 0,
+      right: 0,
+      display: "flex",
+      justifyContent: "center",
+      pointerEvents: "none",
+      zIndex: 60,
+      padding: "0 10px",
+    },
+  };
 
   return (
-    <div className={styles.page}>
-      <div className={styles.shell}>
-        <header className={styles.header}>
-          <div className={styles.headerInner}>
-            <div className={styles.top}>
-              <div className={styles.brand}>
-                <div className={styles.logo} aria-hidden>
-                  🍕
-                </div>
-                <div>
-                  <h1 className={styles.h1}>Pannello Ordini · Pala Pizza</h1>
-                  <p className={styles.sub}>Aggiornamento automatico attivo (PC + telefono).</p>
-                </div>
+    <div style={styles.page}>
+      {toast && (
+        <div style={styles.toastWrap}>
+          <div style={toastStyle(toast.type)}>{toast.msg}</div>
+        </div>
+      )}
+
+      <div style={styles.container}>
+        <div style={styles.header}>
+          <div style={styles.headerInner}>
+            <div style={styles.topRow}>
+              <div>
+                <div style={styles.badge}>GALAXBOT AI • BARBER SHOP</div>
+                <h1 style={styles.h1}>Idee per la Testa</h1>
+                <p style={styles.sub}>
+                  Pannello prenotazioni: vedi <b>Nome</b>, <b>Telefono</b>, <b>Data</b>, <b>Ora</b>, <b>Servizio</b> e aggiorni lo stato in un tap.
+                </p>
+
+                {loggedIn && (
+                  <div style={styles.chipsRow}>
+                    <div style={styles.chip}>🟡 Nuove: {counts.NUOVA}</div>
+                    <div style={styles.chip}>✅ Confermate: {counts.CONFERMATA}</div>
+                    <div style={styles.chip}>❌ Annullate: {counts.ANNULLATA}</div>
+                  </div>
+                )}
               </div>
 
-              <div className={styles.actionsTop}>
-                <button className={styles.btn} onClick={() => load()} disabled={loading}>
-                  {loading ? "Aggiorno…" : "Aggiorna"}
-                </button>
-                <button className={`${styles.btn} ${styles.btnGhost}`} onClick={logout}>
-                  Esci
-                </button>
-              </div>
-            </div>
-
-            <div className={styles.metrics}>
-              <div className={styles.card}>
-                <div className={styles.cardLabel}>Totali</div>
-                <div className={styles.cardValue}>{counts.TOT}</div>
-              </div>
-              <div className={styles.card}>
-                <div className={styles.cardLabel}>Nuovi</div>
-                <div className={styles.cardValue}>{counts.NUOVO}</div>
-              </div>
-              <div className={styles.card}>
-                <div className={styles.cardLabel}>Confermati</div>
-                <div className={styles.cardValue}>{counts.CONFERMATO}</div>
-              </div>
-              <div className={styles.card}>
-                <div className={styles.cardLabel}>Consegnati</div>
-                <div className={styles.cardValue}>{counts.CONSEGNATO}</div>
-              </div>
-            </div>
-
-            <div className={styles.tools}>
-              <div className={styles.search}>
-                <input
-                  className={styles.input}
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="Cerca: nome, telefono, ordine, indirizzo, note…"
-                />
-              </div>
-
-              <div className={styles.selects}>
-                <select className={styles.select} value={tipo} onChange={(e) => setTipo(e.target.value as any)}>
-                  <option value="TUTTI">Tutti i tipi</option>
-                  <option value="TAVOLO">Tavolo</option>
-                  <option value="ASPORTO">Asporto</option>
-                  <option value="CONSEGNA">Consegna</option>
-                </select>
-
-                <select className={styles.select} value={stato} onChange={(e) => setStato(e.target.value as any)}>
-                  <option value="TUTTI">Tutti gli stati</option>
-                  <option value="NUOVO">Nuovo</option>
-                  <option value="CONFERMATO">Confermato</option>
-                  <option value="CONSEGNATO">Consegnato</option>
-                  <option value="ANNULLATO">Annullato</option>
-                </select>
-              </div>
-
-              <div className={styles.range}>
-                <span className={styles.small}>Da</span>
-                <input className={styles.date} type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-                <span className={styles.small}>A</span>
-                <input className={styles.date} type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-              </div>
-
-              <button
-                className={`${styles.btn} ${styles.btnGhost}`}
-                onClick={() => {
-                  setQ("");
-                  setTipo("TUTTI");
-                  setStato("TUTTI");
-                  setFrom("");
-                  setTo("");
-                }}
-              >
-                Reset
-              </button>
-
-              <div className={styles.counter}>
-                {filtered.length}/{rows.length}
+              <div style={styles.btnRow}>
+                {loggedIn ? (
+                  <>
+                    <button style={styles.btnPrimary} onClick={loadRows} disabled={loadingRows}>
+                      {loadingRows ? "Aggiorno…" : "Aggiorna"}
+                    </button>
+                    <button style={styles.btnDanger} onClick={logout}>
+                      Esci
+                    </button>
+                  </>
+                ) : (
+                  <span style={{ opacity: 0.8, fontSize: 12 }}>Accesso richiesto</span>
+                )}
               </div>
             </div>
           </div>
-        </header>
-
-        {err ? <div className={styles.error}>⚠️ {err}</div> : null}
-
-        <div className={styles.tableWrap} aria-busy={loading ? "true" : "false"}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Ora</th>
-                <th>Nome</th>
-                <th>Telefono</th>
-                <th>Tipo</th>
-                <th>Ordine</th>
-                <th>Allergeni</th>
-                <th>Indirizzo</th>
-                <th>Stato</th>
-                <th>Canale</th>
-                <th>Azioni</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={11} className={styles.tdEmpty}>
-                    Caricamento…
-                  </td>
-                </tr>
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={11} className={styles.tdEmpty}>
-                    Nessun risultato.
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((r, i) => {
-                  const phone = normalizePhone(r.telefono);
-                  const telHref = phone ? `tel:${phone}` : undefined;
-
-                  return (
-                    <tr key={`${r.id}-${i}`} className={styles.row} style={busyStyle(r.id)}>
-                      <td className={styles.mono}>{formatDateIT(r.dataISO)}</td>
-                      <td className={styles.mono}>{r.ora || "—"}</td>
-                      <td className={styles.name}>{r.nome || "—"}</td>
-                      <td className={styles.mono}>{r.telefono || "—"}</td>
-                      <td>
-                        <span className={typeClass(r.tipo)}>{r.tipo}</span>
-                      </td>
-                      <td className={styles.order}>{r.ordine || "—"}</td>
-                      <td className={styles.allergeni}>{r.allergeni || "—"}</td>
-                      <td className={styles.addr}>{r.indirizzo || "—"}</td>
-                      <td>
-                        <span className={statusClass(r.stato)}>{statusKey(r.stato)}</span>
-                      </td>
-                      <td className={styles.mono}>{r.canale || "—"}</td>
-                      <td>
-                        <div className={styles.actions}>
-                          {telHref ? (
-                            <a className={`${styles.actionBtn} ${styles.actionCall}`} href={telHref}>
-                              📞 Chiama
-                            </a>
-                          ) : null}
-
-                          <button
-                            className={`${styles.actionBtn} ${styles.actionOk}`}
-                            onClick={() => statusAndWhatsapp(r, "CONFERMATO")}
-                            disabled={updatingId === r.id}
-                            type="button"
-                          >
-                            ✅ Conferma
-                          </button>
-
-                          <button
-                            className={`${styles.actionBtn} ${styles.actionDone}`}
-                            onClick={() => statusAndWhatsapp(r, "CONSEGNATO")}
-                            disabled={updatingId === r.id}
-                            type="button"
-                          >
-                            🚚 Consegnato
-                          </button>
-
-                          <button
-                            className={`${styles.actionBtn} ${styles.actionNo}`}
-                            onClick={() => statusAndWhatsapp(r, "ANNULLATO")}
-                            disabled={updatingId === r.id}
-                            type="button"
-                          >
-                            ❌ Annulla
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
         </div>
 
-        <div className={styles.mobileCards}>
-          {loading ? (
-            <div className={styles.mCard}>Caricamento…</div>
-          ) : filtered.length === 0 ? (
-            <div className={styles.mCard}>Nessun risultato.</div>
-          ) : (
-            filtered.map((r, i) => {
-              const phone = normalizePhone(r.telefono);
-              const telHref = phone ? `tel:${phone}` : undefined;
+        <div style={styles.panel}>
+          <div style={styles.panelHeader}>
+            <div style={styles.panelTitle}>{loggedIn ? "Prenotazioni" : "Login Admin"}</div>
+            <div style={{ opacity: 0.85, fontSize: 12 }}>
+              {loggedIn ? "Conferma/Annulla → apre WhatsApp con messaggio pronto" : ""}
+            </div>
+          </div>
 
-              return (
-                <div key={`${r.id}-m-${i}`} className={styles.mCard} style={busyStyle(r.id)}>
-                  <div className={styles.mTop}>
-                    <div>
-                      <div className={styles.mName}>{r.nome || "—"}</div>
-                      <div className={styles.mSub}>
-                        <span className={styles.mono}>{formatDateIT(r.dataISO)}</span> •{" "}
-                        <b className={styles.mono}>{r.ora || "—"}</b> •{" "}
-                        <span className={styles.mono}>{r.telefono || "—"}</span>
-                      </div>
-                    </div>
-                    <div className={styles.mBadges}>
-                      <span className={statusClass(r.stato)}>{statusKey(r.stato)}</span>
-                      <span className={typeClass(r.tipo)}>{r.tipo}</span>
-                    </div>
+          <div style={styles.body}>
+            {checking ? (
+              <div style={{ opacity: 0.8 }}>Controllo sessione…</div>
+            ) : !loggedIn ? (
+              <div style={styles.loginBox}>
+                <form onSubmit={login}>
+                  <label style={styles.label}>Password admin</label>
+                  <input
+                    style={styles.input}
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Inserisci password"
+                    autoComplete="current-password"
+                  />
+
+                  <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+                    <button type="submit" style={styles.btnPrimary}>
+                      Entra
+                    </button>
+                    <button type="button" style={styles.btn} onClick={checkMe}>
+                      Rileva sessione
+                    </button>
                   </div>
 
-                  <div className={styles.mGrid}>
-                    <div className={styles.mBox}>
-                      <div className={styles.mLabel}>Ordine</div>
-                      <div className={styles.mValue}>{r.ordine || "—"}</div>
-                    </div>
-                    <div className={styles.mBox}>
-                      <div className={styles.mLabel}>Allergeni</div>
-                      <div className={styles.mValue}>{r.allergeni || "—"}</div>
-                    </div>
-                    <div className={styles.mBox} style={{ gridColumn: "1 / -1" }}>
-                      <div className={styles.mLabel}>Indirizzo</div>
-                      <div className={styles.mValue}>{r.indirizzo || "—"}</div>
-                    </div>
-                    <div className={styles.mBox} style={{ gridColumn: "1 / -1" }}>
-                      <div className={styles.mLabel}>Note</div>
-                      <div className={styles.mValue}>{r.note || "—"}</div>
-                    </div>
+                  {authError && <div style={styles.error}>{authError}</div>}
+
+                  <div style={styles.helper}>
+                    Se non entra: controlla in <b>.env.local</b> che <b>ADMIN_PASSWORD</b> e <b>ADMIN_SESSION_SECRET</b> esistano,
+                    poi riavvia <b>npm run dev</b>.
                   </div>
+                </form>
+              </div>
+            ) : (
+              <>
+                {/* ✅ tolta la ricerca, e messo qui lo stato in modo pulito */}
+                <div style={styles.tools}>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <div style={styles.pillRow}>
+                      {[
+                        { k: "TUTTO", label: "Tutto" },
+                        { k: "OGGI", label: "Oggi" },
+                        { k: "DOMANI", label: "Domani" },
+                        { k: "7", label: "7 giorni" },
+                        { k: "DATA", label: "Data" },
+                      ].map((x) => (
+                        <div
+                          key={x.k}
+                          style={{ ...styles.pill, ...(dayMode === (x.k as any) ? styles.pillActive : {}) }}
+                          onClick={() => setDayMode(x.k as any)}
+                          role="button"
+                        >
+                          {x.label}
+                        </div>
+                      ))}
 
-                  <div className={styles.actions} style={{ marginTop: 12 }}>
-                    {telHref ? (
-                      <a className={`${styles.actionBtn} ${styles.actionCall}`} href={telHref}>
-                        📞 Chiama
-                      </a>
-                    ) : null}
+                      {dayMode === "DATA" && (
+                        <input
+                          style={{ ...styles.input, width: 170 }}
+                          type="date"
+                          value={pickDate}
+                          onChange={(e) => setPickDate(e.target.value)}
+                          aria-label="Scegli data"
+                        />
+                      )}
+                    </div>
 
-                    <button
-                      className={`${styles.actionBtn} ${styles.actionOk}`}
-                      onClick={() => statusAndWhatsapp(r, "CONFERMATO")}
-                      disabled={updatingId === r.id}
-                      type="button"
-                    >
-                      ✅ Conferma
-                    </button>
-
-                    <button
-                      className={`${styles.actionBtn} ${styles.actionDone}`}
-                      onClick={() => statusAndWhatsapp(r, "CONSEGNATO")}
-                      disabled={updatingId === r.id}
-                      type="button"
-                    >
-                      🚚 Consegnato
-                    </button>
-
-                    <button
-                      className={`${styles.actionBtn} ${styles.actionNo}`}
-                      onClick={() => statusAndWhatsapp(r, "ANNULLATO")}
-                      disabled={updatingId === r.id}
-                      type="button"
-                    >
-                      ❌ Annulla
-                    </button>
+                    <div style={styles.pillRow}>
+                      {(["TUTTE", "NUOVA", "CONFERMATA", "ANNULLATA"] as const).map((s) => (
+                        <div
+                          key={s}
+                          style={{ ...styles.pill, ...(statusFilter === s ? styles.pillActive : {}) }}
+                          onClick={() => setStatusFilter(s)}
+                          role="button"
+                        >
+                          {s === "TUTTE" ? "Tutte" : s}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              );
-            })
-          )}
+
+                {rowsError && <div style={styles.error}>{rowsError}</div>}
+                {!rowsError && loadingRows && <div style={{ opacity: 0.8 }}>Carico prenotazioni…</div>}
+
+                {!loadingRows && !rowsError && filtered.length === 0 ? (
+                  <div style={styles.ok}>Nessuna prenotazione da mostrare.</div>
+                ) : (
+                  <div style={styles.list}>
+                    {filtered.map((r, idx) => {
+                      const st = normStatus(r.stato);
+                      const nome = (r.nome || "Cliente").toString();
+                      const tel = r.telefono || "";
+                      const dateIT = toITDate(r.dataISO);
+                      const ora = r.ora || "—";
+                      const serv = (r.servizio || "—").toString();
+
+                      const callHref = tel ? `tel:${safeTel(tel)}` : "#";
+                      const waGeneric = tel ? waLink(tel, `Ciao ${nome}!`) : "#";
+
+                      const accent = accentForIndex(idx);
+
+                      return (
+                        <div key={r.id} style={{ ...styles.card, ...accent.borderGlow }}>
+                          <div style={accent.bar} />
+
+                          <div style={styles.cardTop}>
+                            <span style={nameBadgeStyle()}>{nome}</span>
+                            <div style={{ ...styles.rightStatus, ...statusPillStyle(st) }}>{st}</div>
+                          </div>
+
+                          <div className="mm-grid" style={styles.grid}>
+                            <div style={styles.box}>
+                              <div style={styles.boxLabel}>TELEFONO</div>
+                              <div style={styles.boxValue}>{tel || "—"}</div>
+                            </div>
+
+                            <div style={styles.box}>
+                              <div style={styles.boxLabel}>SERVIZIO</div>
+                              <div style={styles.boxValue}>{serv}</div>
+                            </div>
+
+                            <div style={styles.box}>
+                              <div style={styles.boxLabel}>DATA</div>
+                              <div style={styles.boxValue}>{dateIT}</div>
+                            </div>
+
+                            <div style={styles.box}>
+                              <div style={styles.boxLabel}>ORA</div>
+                              <div style={styles.boxValue}>{ora}</div>
+                            </div>
+                          </div>
+
+                          {r.note ? (
+                            <div style={{ ...styles.box, marginTop: 10, marginLeft: 10 }}>
+                              <div style={styles.boxLabel}>NOTE</div>
+                              <div style={{ ...styles.boxValue, fontWeight: 900, whiteSpace: "pre-wrap" }}>{r.note}</div>
+                            </div>
+                          ) : null}
+
+                          <div style={styles.actions}>
+                            <a
+                              style={{
+                                ...styles.miniBtn,
+                                ...styles.miniBlue,
+                                opacity: tel ? 1 : 0.5,
+                                pointerEvents: tel ? "auto" : "none",
+                              }}
+                              href={callHref}
+                              title="Chiama"
+                            >
+                              📞 Chiama
+                            </a>
+
+                            <a
+                              style={{
+                                ...styles.miniBtn,
+                                ...styles.miniBlue,
+                                opacity: tel ? 1 : 0.5,
+                                pointerEvents: tel ? "auto" : "none",
+                              }}
+                              href={waGeneric}
+                              target="_blank"
+                              rel="noreferrer"
+                              title="Apri WhatsApp"
+                            >
+                              💬 WhatsApp
+                            </a>
+
+                            <button style={{ ...styles.miniBtn, ...styles.miniYellow }} onClick={() => setStatus(r.id, "NUOVA")}>
+                              🟡 Nuova
+                            </button>
+
+                            <button style={{ ...styles.miniBtn, ...styles.miniGreen }} onClick={() => confirmWhatsApp(r)}>
+                              ✅ Conferma (WhatsApp)
+                            </button>
+
+                            <button style={{ ...styles.miniBtn, ...styles.miniRed }} onClick={() => cancelWhatsApp(r)}>
+                              ❌ Annulla (WhatsApp)
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div style={styles.footer}>GalaxBot AI • Pannello prenotazioni</div>
+              </>
+            )}
+          </div>
         </div>
       </div>
+
+      <style>{`
+        @media (max-width: 760px) {
+          .mm-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }

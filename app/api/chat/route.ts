@@ -2,71 +2,81 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-const apiKey = process.env.OPENAI_API_KEY;
+function jsonNoStore(body: any, init?: { status?: number }) {
+  const res = NextResponse.json(body, { status: init?.status ?? 200 });
+  res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.headers.set("Pragma", "no-cache");
+  res.headers.set("Expires", "0");
+  return res;
+}
 
-const client = new OpenAI({
-  apiKey: apiKey ?? "",
-});
+// ✅ DATI BARBIERE (poi li modifichiamo quando ci dirà i dettagli)
+const SHOP_NAME = "Idee per la Testa";
+const SHOP_CITY = "Castelnuovo Vomano (TE)";
+const SHOP_PHONE = "333 123 4567";
+const SHOP_SERVICES = "taglio, barba, sfumature, styling, bimbi";
+const SHOP_HOURS = "Lun–Sab: 8:30–12:30 e 15:00–20:00 | Dom: chiuso";
+
+function systemPrompt() {
+  return `
+Sei l’assistente virtuale del barber shop "${SHOP_NAME}" (${SHOP_CITY}).
+Parla in italiano, tono amichevole e professionale, frasi brevi e chiare.
+
+REGOLE IMPORTANTI:
+- NON prendere prenotazioni in chat.
+- Se il cliente vuole prenotare: digli SEMPRE di usare il box "Prenotazione veloce" sotto la chat.
+- Non inventare prezzi, sconti o promozioni.
+- Se chiedono disponibilità: spiega che le disponibilità reali si vedono nel box prenotazione selezionando la data.
+- Se chiedono annullamento: spiega di usare la sezione "Annulla prenotazione" nella pagina.
+- Se chiedono cose fuori tema (medicina/legale ecc.), rifiuta gentilmente e reindirizza.
+
+INFO (solo se richieste):
+- Nome: ${SHOP_NAME}
+- Città: ${SHOP_CITY}
+- Telefono: ${SHOP_PHONE}
+- Servizi: ${SHOP_SERVICES}
+- Orari: ${SHOP_HOURS}
+
+Esempi rapidi:
+- "Voglio prenotare domani" -> "Certo! Usa il box Prenotazione veloce qui sotto e scegli data e orario."
+- "Che orari fate?" -> dai orari e poi invitalo a prenotare col box.
+`.trim();
+}
 
 export async function POST(req: Request) {
   try {
+    const apiKey = process.env.OPENAI_API_KEY || "";
     if (!apiKey) {
-      return NextResponse.json(
-        { error: "OPENAI_API_KEY non configurata sul server." },
-        { status: 500 }
-      );
+      return jsonNoStore({ ok: false, error: "OPENAI_API_KEY mancante" }, { status: 500 });
     }
 
     const body = await req.json().catch(() => null);
-    const userMessage = body?.message?.toString().trim();
-    const history = Array.isArray(body?.history) ? body.history : [];
+    const userMessage = (body?.message ?? body?.text ?? "").toString().trim();
 
     if (!userMessage) {
-      return NextResponse.json({ error: "Messaggio mancante." }, { status: 400 });
+      return jsonNoStore({ ok: false, error: "Messaggio mancante" }, { status: 400 });
     }
 
-    // ✅ BOT PIZZERIA: informativo + spinge al modulo ordine
-    const systemPrompt = `
-Sei l'assistente virtuale di una pizzeria chiamata "Pala Pizza".
-
-OBIETTIVO:
-- Dare risposte CHIARE e VELOCI su: orari indicativi, asporto/consegna/tavolo, tempi medi, zona consegna (se non sai: dillo), come scrivere l'ordine, allergeni, metodi di pagamento (se non sai: dillo), info generali.
-- Aiutare l'utente a compilare bene il modulo ordine.
-
-REGOLE IMPORTANTI:
-1) NON prendere ordini completi in chat. Se l’utente vuole ordinare o prenotare, invitalo SEMPRE a usare il modulo.
-2) Se l'utente chiede "voglio ordinare / prenotare / consegna / asporto / tavolo / oggi / stasera / pizza / ordine", rispondi:
-   "Per ordinare compila il modulo qui sopra: è più veloce e arriva subito alla pizzeria."
-3) Massimo 6-7 righe. Tono amichevole, diretto, senza papiri.
-4) Se manca un’informazione, fai AL MASSIMO 1 domanda.
-5) Se chiedono prezzi e non li hai: dì che "i prezzi/menu verranno inseriti a breve (demo)" e invita al modulo.
-`;
-
-    // prendo un po’ di contesto dagli ultimi messaggi (max 8)
-    const last = history.slice(-8).map((m: any) => ({
-      role: m?.role === "assistant" ? "assistant" : "user",
-      content: String(m?.content || ""),
-    }));
+    const client = new OpenAI({ apiKey });
 
     const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
-      temperature: 0.5,
+      temperature: 0.55,
       messages: [
-        { role: "system", content: systemPrompt },
-        ...last,
+        { role: "system", content: systemPrompt() },
         { role: "user", content: userMessage },
       ],
     });
 
-    const reply =
-      completion.choices?.[0]?.message?.content?.trim() ||
-      "Ok! Dimmi pure cosa ti serve 🙂";
+    const reply = completion.choices?.[0]?.message?.content?.trim() || "Ok.";
 
-    return NextResponse.json({ ok: true, reply });
+    // ✅ ChatBox deve ricevere "reply"
+    return jsonNoStore({ ok: true, reply });
   } catch (err: any) {
-    return NextResponse.json(
-      { error: "Errore server chat.", details: err?.message ?? String(err) },
+    return jsonNoStore(
+      { ok: false, error: "Errore server /api/chat", details: err?.message ?? String(err) },
       { status: 500 }
     );
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState, type CSSProperties } from "react";
+import React, { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import styles from "./pannello.module.css";
 
 type OrderRow = {
@@ -185,8 +185,15 @@ export default function PannelloOrdiniPalaPizza() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
+  // ✅ evita overlap refresh
+  const loadingRef = useRef(false);
+
   async function load(opts?: { silent?: boolean }) {
     const silent = !!opts?.silent;
+
+    // evita chiamate sovrapposte
+    if (loadingRef.current) return;
+    loadingRef.current = true;
 
     if (!silent) setLoading(true);
     setErr("");
@@ -240,9 +247,10 @@ export default function PannelloOrdiniPalaPizza() {
       setRows(parsed);
     } catch (e: any) {
       setErr(e?.message || "Errore rete.");
-      if (!opts?.silent) setRows([]);
+      if (!silent) setRows([]);
     } finally {
-      if (!opts?.silent) setLoading(false);
+      if (!silent) setLoading(false);
+      loadingRef.current = false;
     }
   }
 
@@ -295,24 +303,27 @@ export default function PannelloOrdiniPalaPizza() {
     // ✅ poi aggiorna stato
     await setStatus(r.id, newStatus);
 
-    // ✅ e fai un refresh “silenzioso” (così ti arrivano anche nuovi ordini)
+    // ✅ refresh “silenzioso” (senza flicker)
     load({ silent: true });
   }
 
-  // prima load
+  // ✅ prima load
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ auto-refresh (senza flicker)
+  // ✅ auto-refresh: solo se tab visibile e NON mentre stai aggiornando stato
   useEffect(() => {
     const t = window.setInterval(() => {
-      if (document.visibilityState === "visible") load({ silent: true });
+      if (document.visibilityState !== "visible") return;
+      if (updatingId) return; // evita refresh mentre clicchi
+      load({ silent: true });
     }, AUTO_REFRESH_MS);
+
     return () => window.clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [updatingId]);
 
   // ✅ quando torni al pannello (dopo WhatsApp), aggiorna
   useEffect(() => {

@@ -113,7 +113,18 @@ function buildStatusWaText(r: OrderRow, newStatus: "CONFERMATO" | "CONSEGNATO" |
 function buildWaHref(phoneRaw: string, text: string) {
   const phone = normalizePhone(phoneRaw).replace("+", "");
   if (!phone) return "";
-  return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+  // più affidabile di wa.me su desktop/web
+  const url = new URL("https://api.whatsapp.com/send");
+  url.searchParams.set("phone", phone);
+  url.searchParams.set("text", text);
+  return url.toString();
+}
+
+function openWhatsApp(url: string) {
+  if (!url) return;
+  const w = window.open(url, "_blank", "noreferrer");
+  // fallback se popup bloccato
+  if (!w) window.location.href = url;
 }
 
 export default function PannelloOrdiniPalaPizza() {
@@ -150,7 +161,7 @@ export default function PannelloOrdiniPalaPizza() {
       const list: any[] = Array.isArray(data.rows) ? data.rows : [];
 
       const parsed: OrderRow[] = list.map((item: any, idx: number) => {
-        // Nel tuo sheet: Timestamp|Nome|Telefono|Tipo|Data|Ora|Allergeni|Ordine|Indirizzo|Stato|Bot o Manuale|Note|ID
+        // Timestamp|Nome|Telefono|Tipo|Data|Ora|Allergeni|Ordine|Indirizzo|Stato|Bot o Manuale|Note|ID
         const dataISO = toDateISO(pick(item, 4, ["Data", "date", "dataISO", "dataIso", "data"]));
         const id = s(pick(item, 12, ["ID", "id"])).trim();
 
@@ -202,7 +213,6 @@ export default function PannelloOrdiniPalaPizza() {
 
     setUpdatingId(id);
     try {
-      // ✅ usa la tua route protetta cookie + Apps Script updateStatus
       const r = await fetch("/api/orders/status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -229,11 +239,11 @@ export default function PannelloOrdiniPalaPizza() {
   }
 
   async function statusAndWhatsapp(r: OrderRow, newStatus: "CONFERMATO" | "CONSEGNATO" | "ANNULLATO") {
-    // Apro WA subito (così il browser non blocca il popup)
-    const phone = normalizePhone(r.telefono);
-    const waText = buildStatusWaText(r, newStatus);
-    const waHref = phone ? buildWaHref(phone, waText) : "";
-    if (waHref) window.open(waHref, "_blank", "noreferrer");
+    const waText = `${buildStatusWaText(r, newStatus)}\n\n— Stato: ${newStatus}`;
+    const waHref = buildWaHref(r.telefono, waText);
+
+    // apro WA subito (evita blocchi popup)
+    if (waHref) openWhatsApp(waHref);
 
     await setStatus(r.id, newStatus);
   }
@@ -391,7 +401,6 @@ export default function PannelloOrdiniPalaPizza() {
 
         {err ? <div className={styles.error}>⚠️ {err}</div> : null}
 
-        {/* DESKTOP TABLE */}
         <div className={styles.tableWrap} aria-busy={loading ? "true" : "false"}>
           <table className={styles.table}>
             <thead>
@@ -428,18 +437,6 @@ export default function PannelloOrdiniPalaPizza() {
                   const phone = normalizePhone(r.telefono);
                   const telHref = phone ? `tel:${phone}` : undefined;
 
-                  const waText =
-                    `Ciao ${r.nome}! 👋\n` +
-                    `Ordine ${formatDateIT(r.dataISO)} ore ${r.ora}\n` +
-                    `Tipo: ${r.tipo}\n` +
-                    `Ordine: ${r.ordine}\n` +
-                    `${r.allergeni ? `Allergeni: ${r.allergeni}\n` : ""}` +
-                    `${r.indirizzo ? `Indirizzo: ${r.indirizzo}\n` : ""}`;
-
-                  const waHref = phone
-                    ? `https://wa.me/${phone.replace("+", "")}?text=${encodeURIComponent(waText)}`
-                    : undefined;
-
                   return (
                     <tr key={`${r.id}-${i}`} className={styles.row} style={busyStyle(r.id)}>
                       <td className={styles.mono}>{formatDateIT(r.dataISO)}</td>
@@ -461,17 +458,6 @@ export default function PannelloOrdiniPalaPizza() {
                           {telHref ? (
                             <a className={`${styles.actionBtn} ${styles.actionCall}`} href={telHref}>
                               📞 Chiama
-                            </a>
-                          ) : null}
-
-                          {waHref ? (
-                            <a
-                              className={`${styles.actionBtn} ${styles.actionWa}`}
-                              href={waHref}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              💬 WhatsApp
                             </a>
                           ) : null}
 
@@ -511,7 +497,6 @@ export default function PannelloOrdiniPalaPizza() {
           </table>
         </div>
 
-        {/* MOBILE CARDS */}
         <div className={styles.mobileCards}>
           {loading ? (
             <div className={styles.mCard}>Caricamento…</div>
@@ -521,18 +506,6 @@ export default function PannelloOrdiniPalaPizza() {
             filtered.map((r, i) => {
               const phone = normalizePhone(r.telefono);
               const telHref = phone ? `tel:${phone}` : undefined;
-
-              const waText =
-                `Ciao ${r.nome}! 👋\n` +
-                `Ordine ${formatDateIT(r.dataISO)} ore ${r.ora}\n` +
-                `Tipo: ${r.tipo}\n` +
-                `Ordine: ${r.ordine}\n` +
-                `${r.allergeni ? `Allergeni: ${r.allergeni}\n` : ""}` +
-                `${r.indirizzo ? `Indirizzo: ${r.indirizzo}\n` : ""}`;
-
-              const waHref = phone
-                ? `https://wa.me/${phone.replace("+", "")}?text=${encodeURIComponent(waText)}`
-                : undefined;
 
               return (
                 <div key={`${r.id}-m-${i}`} className={styles.mCard} style={busyStyle(r.id)}>
@@ -574,17 +547,6 @@ export default function PannelloOrdiniPalaPizza() {
                     {telHref ? (
                       <a className={`${styles.actionBtn} ${styles.actionCall}`} href={telHref}>
                         📞 Chiama
-                      </a>
-                    ) : null}
-
-                    {waHref ? (
-                      <a
-                        className={`${styles.actionBtn} ${styles.actionWa}`}
-                        href={waHref}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        💬 WhatsApp
                       </a>
                     ) : null}
 

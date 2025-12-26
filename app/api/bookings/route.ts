@@ -1,4 +1,3 @@
-// app/api/bookings/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getCookieName, verifySessionToken } from "@/lib/adminAuth";
@@ -13,13 +12,16 @@ export async function GET(req: Request) {
     const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || "";
 
     if (!GOOGLE_SCRIPT_URL) {
-      return NextResponse.json({ ok: false, error: "GOOGLE_SCRIPT_URL (o BOOKING_WEBAPP_URL) mancante" }, { status: 500 });
+      return NextResponse.json(
+        { ok: false, error: "GOOGLE_SCRIPT_URL (o BOOKING_WEBAPP_URL) mancante" },
+        { status: 500 }
+      );
     }
     if (!ADMIN_SESSION_SECRET) {
       return NextResponse.json({ ok: false, error: "ADMIN_SESSION_SECRET mancante" }, { status: 500 });
     }
 
-    // ✅ Auth via cookie (staff)
+    // ✅ Auth via cookie (NEXT: cookies() è async -> serve await)
     const cookieStore = await cookies();
     const token = cookieStore.get(getCookieName())?.value;
 
@@ -30,7 +32,6 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const limit = Math.min(Math.max(Number(searchParams.get("limit") || 300), 1), 500);
 
-    // ✅ Legge "Ordini" dal tuo Apps Script
     const url =
       `${GOOGLE_SCRIPT_URL}?action=list&sheet=Ordini&limit=${encodeURIComponent(String(limit))}` +
       (GOOGLE_SCRIPT_SECRET ? `&secret=${encodeURIComponent(GOOGLE_SCRIPT_SECRET)}` : "");

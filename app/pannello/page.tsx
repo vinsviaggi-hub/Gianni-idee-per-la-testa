@@ -78,81 +78,20 @@ async function safeJson(res: Response) {
   }
 }
 
-function statusPillStyle(st: BookingStatus): CSSProperties {
-  const s = normStatus(st);
-  if (s === "CONFERMATA") {
-    return {
-      background: "rgba(34,197,94,0.14)",
-      border: "1px solid rgba(34,197,94,0.35)",
-      color: "rgba(15,23,42,0.92)",
-    };
-  }
-  if (s === "ANNULLATA") {
-    return {
-      background: "rgba(239,68,68,0.12)",
-      border: "1px solid rgba(239,68,68,0.30)",
-      color: "rgba(15,23,42,0.92)",
-    };
-  }
-  return {
-    background: "rgba(245,158,11,0.14)",
-    border: "1px solid rgba(245,158,11,0.30)",
-    color: "rgba(15,23,42,0.92)",
-  };
-}
-
-// ✅ nome vivace (non rosa) – blu acceso, leggibilissimo
-function nameBadgeStyle(): CSSProperties {
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    padding: "8px 12px",
-    borderRadius: 999,
-    border: "1px solid rgba(29,78,216,0.35)",
-    background: "linear-gradient(135deg, rgba(29,78,216,0.95), rgba(37,99,235,0.78))",
-    color: "white",
-    fontWeight: 1000,
-    letterSpacing: 0.2,
-    textTransform: "none",
-    boxShadow: "0 10px 22px rgba(29,78,216,0.18)",
-  };
-}
-
-// ✅ divisori ROSSO/BLU alternati
-function accentForIndex(i: number) {
-  const isBlue = i % 2 === 0;
-  const bar: CSSProperties = {
-    position: "absolute",
-    inset: "0 auto 0 0",
-    width: 8,
-    background: isBlue
-      ? "linear-gradient(180deg, rgba(37,99,235,0.80), rgba(37,99,235,0.20))"
-      : "linear-gradient(180deg, rgba(239,68,68,0.78), rgba(239,68,68,0.18))",
-  };
-
-  const borderGlow: CSSProperties = {
-    border: isBlue ? "1px solid rgba(37,99,235,0.22)" : "1px solid rgba(239,68,68,0.20)",
-    boxShadow: isBlue
-      ? "0 10px 26px rgba(37,99,235,0.10)"
-      : "0 10px 26px rgba(239,68,68,0.08)",
-  };
-
-  return { bar, borderGlow };
-}
-
 function toastStyle(type: "ok" | "err"): CSSProperties {
   return {
     pointerEvents: "none",
     padding: "10px 12px",
     borderRadius: 14,
-    border: type === "ok" ? "1px solid rgba(34,197,94,0.32)" : "1px solid rgba(239,68,68,0.30)",
+    border: type === "ok" ? "1px solid rgba(34,197,94,0.35)" : "1px solid rgba(239,68,68,0.35)",
     background: type === "ok" ? "rgba(34,197,94,0.14)" : "rgba(239,68,68,0.14)",
-    color: "rgba(15,23,42,0.92)",
+    color: "rgba(255,255,255,0.92)",
     fontWeight: 950,
-    boxShadow: "0 16px 40px rgba(0,0,0,0.18)",
+    boxShadow: "0 18px 55px rgba(0,0,0,0.45)",
     maxWidth: 860,
     width: "100%",
     textAlign: "center",
+    backdropFilter: "blur(10px)",
   };
 }
 
@@ -178,6 +117,66 @@ function buildCancelMsg(r: AdminRow) {
   return `Ciao${nome ? " " + nome : ""}. ❌ Il tuo appuntamento è ANNULLATO (${serv}) del ${data} alle ${ora}. Se vuoi riprenotare, scrivimi qui.`;
 }
 
+/** Badge nome “wow” (barbiere) */
+function nameBadgeStyle(): CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "8px 12px",
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.18)",
+    background:
+      "linear-gradient(135deg, rgba(37,99,235,0.92), rgba(239,68,68,0.82))",
+    color: "white",
+    fontWeight: 1000,
+    letterSpacing: 0.2,
+    boxShadow: "0 14px 30px rgba(0,0,0,0.30)",
+  };
+}
+
+function statusPillStyle(st: BookingStatus): CSSProperties {
+  const s = normStatus(st);
+  if (s === "CONFERMATA") {
+    return {
+      background: "rgba(34,197,94,0.14)",
+      border: "1px solid rgba(34,197,94,0.35)",
+      color: "rgba(255,255,255,0.92)",
+    };
+  }
+  if (s === "ANNULLATA") {
+    return {
+      background: "rgba(239,68,68,0.14)",
+      border: "1px solid rgba(239,68,68,0.35)",
+      color: "rgba(255,255,255,0.92)",
+    };
+  }
+  return {
+    background: "rgba(245,158,11,0.14)",
+    border: "1px solid rgba(245,158,11,0.35)",
+    color: "rgba(255,255,255,0.92)",
+  };
+}
+
+/** Striscia “barber pole” laterale sulle card */
+function accentForIndex(i: number) {
+  const isBlue = i % 2 === 0;
+  const bar: CSSProperties = {
+    position: "absolute",
+    inset: "0 auto 0 0",
+    width: 10,
+    background: isBlue
+      ? "linear-gradient(180deg, rgba(37,99,235,0.85), rgba(37,99,235,0.18))"
+      : "linear-gradient(180deg, rgba(239,68,68,0.85), rgba(239,68,68,0.18))",
+  };
+  const borderGlow: CSSProperties = {
+    border: "1px solid rgba(255,255,255,0.10)",
+    boxShadow: isBlue
+      ? "0 14px 40px rgba(37,99,235,0.10)"
+      : "0 14px 40px rgba(239,68,68,0.08)",
+  };
+  return { bar, borderGlow };
+}
+
 export default function PannelloAdmin() {
   const [checking, setChecking] = useState(true);
   const [loggedIn, setLoggedIn] = useState(false);
@@ -189,11 +188,9 @@ export default function PannelloAdmin() {
   const [loadingRows, setLoadingRows] = useState(false);
   const [rowsError, setRowsError] = useState<string | null>(null);
 
-  // ✅ filtri giorni
   const [dayMode, setDayMode] = useState<"TUTTO" | "OGGI" | "DOMANI" | "7" | "DATA">("TUTTO");
   const [pickDate, setPickDate] = useState<string>(todayISO());
 
-  // ✅ filtro stato messo in un posto pulito (sotto ai giorni)
   const [statusFilter, setStatusFilter] = useState<"TUTTE" | "NUOVA" | "CONFERMATA" | "ANNULLATA">("TUTTE");
 
   const [toast, setToast] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
@@ -353,7 +350,6 @@ export default function PannelloAdmin() {
   const setStatus = async (id: string, status: BookingStatus) => {
     const next = normStatus(status);
 
-    // UI ottimista
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, stato: next } : r)));
 
     try {
@@ -385,11 +381,9 @@ export default function PannelloAdmin() {
       showToast("err", "Telefono mancante: non posso aprire WhatsApp.");
       return;
     }
-    // ✅ apertura IMMEDIATA (non bloccata dal browser)
     window.open(waLink(p, message), "_blank", "noopener,noreferrer");
   }
 
-  // ✅ QUI la differenza: prima apro WhatsApp (subito), poi aggiorno lo stato
   const confirmWhatsApp = (r: AdminRow) => {
     openWhatsApp(r.telefono || "", buildConfirmMsg(r));
     void setStatus(r.id, "CONFERMATA");
@@ -410,101 +404,135 @@ export default function PannelloAdmin() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedIn]);
 
+  // =======================
+  //  STILE “BARBIERE WOW”
+  // =======================
   const styles: Record<string, CSSProperties> = {
     page: {
       minHeight: "100vh",
-      padding: "18px 12px 34px",
+      padding: "18px 12px 36px",
       background:
-        "radial-gradient(900px 520px at 12% 0%, rgba(59,130,246,0.10), transparent 62%)," +
-        "radial-gradient(900px 520px at 88% 8%, rgba(15,23,42,0.08), transparent 62%)," +
-        "radial-gradient(900px 520px at 50% 100%, rgba(148,163,184,0.12), transparent 60%)," +
-        "linear-gradient(180deg, #f5f6f8 0%, #ffffff 56%, #f3f4f6 100%)",
-      color: "rgba(15,23,42,0.92)",
+        "radial-gradient(1100px 640px at 12% 0%, rgba(37,99,235,0.16), transparent 60%)," +
+        "radial-gradient(1100px 640px at 88% 10%, rgba(239,68,68,0.16), transparent 60%)," +
+        "radial-gradient(1000px 620px at 50% 100%, rgba(245,158,11,0.12), transparent 62%)," +
+        "linear-gradient(180deg, #070b12 0%, #0b1220 55%, #070b12 100%)",
+      color: "rgba(255,255,255,0.92)",
       fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial",
     },
     container: { maxWidth: 1120, margin: "0 auto" },
 
     header: {
-      borderRadius: 18,
-      border: "1px solid rgba(15,23,42,0.10)",
-      background: "rgba(255,255,255,0.90)",
-      boxShadow: "0 16px 40px rgba(0,0,0,0.08)",
+      borderRadius: 20,
+      border: "1px solid rgba(255,255,255,0.10)",
+      background:
+        "linear-gradient(135deg, rgba(10,14,24,0.92), rgba(10,14,24,0.72))",
+      boxShadow: "0 22px 70px rgba(0,0,0,0.55)",
       overflow: "hidden",
+      position: "relative",
     },
-    headerInner: { padding: "14px 14px 12px" },
+    headerStripe: {
+      position: "absolute",
+      inset: "0 0 auto 0",
+      height: 6,
+      background:
+        "linear-gradient(90deg, rgba(37,99,235,0.95), rgba(255,255,255,0.85), rgba(239,68,68,0.95), rgba(245,158,11,0.85))",
+      opacity: 0.85,
+    },
+    headerInner: { padding: "16px 16px 14px", position: "relative" },
 
     topRow: {
       display: "flex",
-      gap: 12,
+      gap: 14,
       alignItems: "flex-start",
       justifyContent: "space-between",
       flexWrap: "wrap",
     },
+
     badge: {
       display: "inline-flex",
       alignItems: "center",
       gap: 8,
-      padding: "7px 10px",
+      padding: "8px 10px",
       borderRadius: 999,
-      border: "1px solid rgba(15,23,42,0.12)",
-      background: "rgba(15,23,42,0.04)",
+      border: "1px solid rgba(255,255,255,0.14)",
+      background: "rgba(255,255,255,0.06)",
       fontSize: 12,
-      letterSpacing: 0.6,
+      letterSpacing: 0.9,
       textTransform: "uppercase",
-      fontWeight: 900,
+      fontWeight: 950,
+      color: "rgba(255,255,255,0.92)",
     },
-    h1: { margin: "6px 0 2px", fontSize: 28, fontWeight: 1000, letterSpacing: -0.4 },
-    sub: { margin: 0, opacity: 0.85, fontSize: 14, lineHeight: 1.35 },
+
+    titleRow: { display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" },
+    h1: {
+      margin: "8px 0 2px",
+      fontSize: 30,
+      fontWeight: 1100,
+      letterSpacing: -0.6,
+      color: "rgba(255,255,255,0.96)",
+    },
+    scissors: {
+      fontSize: 22,
+      opacity: 0.95,
+      transform: "translateY(-1px)",
+      filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.30))",
+    },
+    sub: { margin: 0, opacity: 0.82, fontSize: 14, lineHeight: 1.35 },
 
     chipsRow: { marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" },
     chip: {
       display: "inline-flex",
       alignItems: "center",
       gap: 8,
-      padding: "8px 10px",
+      padding: "9px 11px",
       borderRadius: 999,
-      border: "1px solid rgba(15,23,42,0.12)",
-      background: "rgba(255,255,255,0.88)",
+      border: "1px solid rgba(255,255,255,0.12)",
+      background: "rgba(255,255,255,0.06)",
       fontWeight: 950,
       fontSize: 13,
+      color: "rgba(255,255,255,0.92)",
+      backdropFilter: "blur(8px)",
     },
 
     btnRow: { display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" },
     btn: {
-      border: "1px solid rgba(15,23,42,0.14)",
-      background: "rgba(255,255,255,0.92)",
-      color: "rgba(15,23,42,0.92)",
+      border: "1px solid rgba(255,255,255,0.14)",
+      background: "rgba(255,255,255,0.06)",
+      color: "rgba(255,255,255,0.92)",
       padding: "10px 12px",
-      borderRadius: 12,
+      borderRadius: 14,
       cursor: "pointer",
       fontWeight: 950,
+      backdropFilter: "blur(8px)",
     },
     btnPrimary: {
-      border: "1px solid rgba(37,99,235,0.22)",
-      background: "linear-gradient(90deg, rgba(37,99,235,0.18), rgba(37,99,235,0.08))",
-      color: "rgba(15,23,42,0.92)",
+      border: "1px solid rgba(245,158,11,0.35)",
+      background: "linear-gradient(90deg, rgba(239,68,68,0.95), rgba(245,158,11,0.85))",
+      color: "rgba(10,14,24,0.98)",
       padding: "10px 12px",
-      borderRadius: 12,
+      borderRadius: 14,
       cursor: "pointer",
-      fontWeight: 1000,
+      fontWeight: 1100,
+      boxShadow: "0 16px 40px rgba(239,68,68,0.18)",
     },
     btnDanger: {
-      border: "1px solid rgba(239,68,68,0.24)",
-      background: "rgba(239,68,68,0.08)",
-      color: "rgba(15,23,42,0.92)",
+      border: "1px solid rgba(239,68,68,0.35)",
+      background: "rgba(239,68,68,0.10)",
+      color: "rgba(255,255,255,0.92)",
       padding: "10px 12px",
-      borderRadius: 12,
+      borderRadius: 14,
       cursor: "pointer",
-      fontWeight: 1000,
+      fontWeight: 1100,
     },
 
     panel: {
       marginTop: 12,
-      borderRadius: 18,
-      border: "1px solid rgba(15,23,42,0.10)",
-      background: "rgba(255,255,255,0.90)",
-      boxShadow: "0 16px 40px rgba(0,0,0,0.08)",
+      borderRadius: 20,
+      border: "1px solid rgba(255,255,255,0.10)",
+      background: "rgba(10,14,24,0.72)",
+      boxShadow: "0 22px 70px rgba(0,0,0,0.55)",
       overflow: "hidden",
+      backdropFilter: "blur(10px)",
     },
     panelHeader: {
       padding: "12px 14px",
@@ -512,51 +540,54 @@ export default function PannelloAdmin() {
       alignItems: "center",
       justifyContent: "space-between",
       gap: 10,
-      borderBottom: "1px solid rgba(15,23,42,0.08)",
-      background: "linear-gradient(90deg, rgba(15,23,42,0.03), rgba(37,99,235,0.05))",
+      borderBottom: "1px solid rgba(255,255,255,0.10)",
+      background:
+        "linear-gradient(90deg, rgba(255,255,255,0.06), rgba(37,99,235,0.10), rgba(239,68,68,0.08))",
       flexWrap: "wrap",
+      color: "rgba(255,255,255,0.92)",
     },
-    panelTitle: { fontWeight: 1000, letterSpacing: 0.2 },
+    panelTitle: { fontWeight: 1100, letterSpacing: 0.2 },
     body: { padding: 14 },
 
     loginBox: {
       maxWidth: 520,
       margin: "10px auto 0",
       padding: 14,
-      borderRadius: 16,
-      border: "1px solid rgba(15,23,42,0.12)",
-      background: "rgba(255,255,255,0.92)",
+      borderRadius: 18,
+      border: "1px solid rgba(255,255,255,0.12)",
+      background: "rgba(255,255,255,0.06)",
+      backdropFilter: "blur(10px)",
     },
-    label: { fontWeight: 1000, opacity: 0.95, display: "block", marginBottom: 8 },
+    label: { fontWeight: 1000, opacity: 0.92, display: "block", marginBottom: 8 },
     input: {
       width: "100%",
       padding: "12px 12px",
-      borderRadius: 12,
-      border: "1px solid rgba(15,23,42,0.14)",
-      background: "rgba(255,255,255,1)",
-      color: "rgba(15,23,42,0.92)",
+      borderRadius: 14,
+      border: "1px solid rgba(255,255,255,0.14)",
+      background: "rgba(255,255,255,0.06)",
+      color: "rgba(255,255,255,0.92)",
       outline: "none",
-      fontSize: 15,
+      fontSize: 16, // evita zoom iOS
       fontWeight: 900,
     },
     helper: { marginTop: 10, opacity: 0.8, fontSize: 13, lineHeight: 1.35 },
     error: {
       marginTop: 10,
       padding: "10px 12px",
-      borderRadius: 12,
-      border: "1px solid rgba(239,68,68,0.26)",
-      background: "rgba(239,68,68,0.10)",
-      color: "rgba(15,23,42,0.92)",
+      borderRadius: 14,
+      border: "1px solid rgba(239,68,68,0.35)",
+      background: "rgba(239,68,68,0.12)",
+      color: "rgba(255,255,255,0.92)",
       fontWeight: 950,
       fontSize: 13,
     },
     ok: {
       marginTop: 10,
       padding: "10px 12px",
-      borderRadius: 12,
-      border: "1px solid rgba(34,197,94,0.24)",
-      background: "rgba(34,197,94,0.10)",
-      color: "rgba(15,23,42,0.92)",
+      borderRadius: 14,
+      border: "1px solid rgba(34,197,94,0.30)",
+      background: "rgba(34,197,94,0.12)",
+      color: "rgba(255,255,255,0.92)",
       fontWeight: 950,
       fontSize: 13,
     },
@@ -574,26 +605,32 @@ export default function PannelloAdmin() {
     pill: {
       padding: "9px 10px",
       borderRadius: 999,
-      border: "1px solid rgba(15,23,42,0.12)",
-      background: "rgba(255,255,255,0.92)",
+      border: "1px solid rgba(255,255,255,0.14)",
+      background: "rgba(255,255,255,0.06)",
       cursor: "pointer",
       fontWeight: 1000,
       fontSize: 12,
       userSelect: "none",
+      color: "rgba(255,255,255,0.92)",
+      backdropFilter: "blur(8px)",
     },
     pillActive: {
-      background: "linear-gradient(90deg, rgba(37,99,235,0.16), rgba(37,99,235,0.08))",
-      border: "1px solid rgba(37,99,235,0.22)",
+      background:
+        "linear-gradient(90deg, rgba(37,99,235,0.18), rgba(239,68,68,0.14), rgba(245,158,11,0.14))",
+      border: "1px solid rgba(255,255,255,0.18)",
     },
 
     list: { display: "grid", gap: 12 },
 
     card: {
-      borderRadius: 16,
-      background: "rgba(255,255,255,0.95)",
+      borderRadius: 18,
+      background: "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.06))",
       padding: 12,
       position: "relative",
       overflow: "hidden",
+      border: "1px solid rgba(255,255,255,0.10)",
+      boxShadow: "0 18px 50px rgba(0,0,0,0.30)",
+      backdropFilter: "blur(10px)",
     },
 
     cardTop: {
@@ -603,7 +640,7 @@ export default function PannelloAdmin() {
       gap: 10,
       flexWrap: "wrap",
       marginBottom: 10,
-      paddingLeft: 10,
+      paddingLeft: 12,
     },
     rightStatus: {
       display: "inline-flex",
@@ -619,31 +656,31 @@ export default function PannelloAdmin() {
       display: "grid",
       gap: 10,
       gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-      paddingLeft: 10,
+      paddingLeft: 12,
     },
     box: {
       borderRadius: 14,
-      border: "1px solid rgba(15,23,42,0.10)",
-      background: "rgba(15,23,42,0.02)",
+      border: "1px solid rgba(255,255,255,0.10)",
+      background: "rgba(255,255,255,0.06)",
       padding: "10px 10px",
     },
-    boxLabel: { fontSize: 11, fontWeight: 1000, opacity: 0.7, letterSpacing: 0.6 },
-    boxValue: { marginTop: 4, fontSize: 15, fontWeight: 1000 },
+    boxLabel: { fontSize: 11, fontWeight: 1000, opacity: 0.75, letterSpacing: 0.6 },
+    boxValue: { marginTop: 4, fontSize: 15, fontWeight: 1100, color: "rgba(255,255,255,0.92)" },
 
     actions: {
       display: "flex",
       gap: 8,
       flexWrap: "wrap",
       marginTop: 10,
-      paddingLeft: 10,
+      paddingLeft: 12,
       alignItems: "center",
     },
     miniBtn: {
       padding: "9px 10px",
-      borderRadius: 12,
-      border: "1px solid rgba(15,23,42,0.12)",
-      background: "rgba(255,255,255,0.95)",
-      color: "rgba(15,23,42,0.92)",
+      borderRadius: 14,
+      border: "1px solid rgba(255,255,255,0.12)",
+      background: "rgba(255,255,255,0.06)",
+      color: "rgba(255,255,255,0.92)",
       cursor: "pointer",
       fontWeight: 1000,
       fontSize: 12,
@@ -651,11 +688,12 @@ export default function PannelloAdmin() {
       alignItems: "center",
       gap: 8,
       textDecoration: "none",
+      backdropFilter: "blur(8px)",
     },
-    miniGreen: { border: "1px solid rgba(34,197,94,0.26)", background: "rgba(34,197,94,0.10)" },
-    miniRed: { border: "1px solid rgba(239,68,68,0.26)", background: "rgba(239,68,68,0.10)" },
-    miniYellow: { border: "1px solid rgba(245,158,11,0.26)", background: "rgba(245,158,11,0.10)" },
-    miniBlue: { border: "1px solid rgba(37,99,235,0.22)", background: "rgba(37,99,235,0.08)" },
+    miniGreen: { border: "1px solid rgba(34,197,94,0.30)", background: "rgba(34,197,94,0.12)" },
+    miniRed: { border: "1px solid rgba(239,68,68,0.30)", background: "rgba(239,68,68,0.12)" },
+    miniYellow: { border: "1px solid rgba(245,158,11,0.30)", background: "rgba(245,158,11,0.12)" },
+    miniBlue: { border: "1px solid rgba(37,99,235,0.28)", background: "rgba(37,99,235,0.10)" },
 
     footer: { marginTop: 14, opacity: 0.7, fontSize: 12, textAlign: "center" },
 
@@ -682,11 +720,19 @@ export default function PannelloAdmin() {
 
       <div style={styles.container}>
         <div style={styles.header}>
+          <div style={styles.headerStripe} />
           <div style={styles.headerInner}>
             <div style={styles.topRow}>
               <div>
                 <div style={styles.badge}>GALAXBOT AI • BARBER SHOP</div>
-                <h1 style={styles.h1}>Idee per la Testa</h1>
+
+                <div style={styles.titleRow}>
+                  <span style={styles.scissors} aria-hidden>
+                    ✂️
+                  </span>
+                  <h1 style={styles.h1}>Idee per la Testa</h1>
+                </div>
+
                 <p style={styles.sub}>
                   Pannello prenotazioni: vedi <b>Nome</b>, <b>Telefono</b>, <b>Data</b>, <b>Ora</b>, <b>Servizio</b> e aggiorni lo stato in un tap.
                 </p>
@@ -761,7 +807,6 @@ export default function PannelloAdmin() {
               </div>
             ) : (
               <>
-                {/* ✅ tolta la ricerca, e messo qui lo stato in modo pulito */}
                 <div style={styles.tools}>
                   <div style={{ display: "grid", gap: 8 }}>
                     <div style={styles.pillRow}>
@@ -860,7 +905,7 @@ export default function PannelloAdmin() {
                           </div>
 
                           {r.note ? (
-                            <div style={{ ...styles.box, marginTop: 10, marginLeft: 10 }}>
+                            <div style={{ ...styles.box, marginTop: 10, marginLeft: 12 }}>
                               <div style={styles.boxLabel}>NOTE</div>
                               <div style={{ ...styles.boxValue, fontWeight: 900, whiteSpace: "pre-wrap" }}>{r.note}</div>
                             </div>
@@ -922,9 +967,7 @@ export default function PannelloAdmin() {
 
       <style>{`
         @media (max-width: 760px) {
-          .mm-grid {
-            grid-template-columns: 1fr !important;
-          }
+          .mm-grid { grid-template-columns: 1fr !important; }
         }
       `}</style>
     </div>

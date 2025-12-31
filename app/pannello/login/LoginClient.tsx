@@ -10,6 +10,11 @@ export default function LoginClient() {
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // ✅ Cambia qui i testi (solo label)
+  const BRAND_TOP = "GALAXBOT AI • BARBIERE";
+  const SHOP_NAME = "Idee per la Testa";
+  const SUBTITLE = "Pannello prenotazioni";
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setMsg("");
@@ -24,6 +29,7 @@ export default function LoginClient() {
     try {
       const r = await fetch("/api/admin/login", {
         method: "POST",
+        credentials: "include", // ✅ cookie sessione (sicuro anche su vercel)
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password: p }),
       });
@@ -45,58 +51,64 @@ export default function LoginClient() {
   }
 
   return (
-    <div className={styles.wrap}>
-      <div className={styles.card}>
-        <div className={styles.brandRow}>
-          <div className={styles.logoDot} aria-hidden />
-          <div>
-            <div className={styles.brand}>Pala Pizza</div>
-            <div className={styles.sub}>Pannello ordini</div>
+    <div className={styles.page}>
+      <div className={styles.shell}>
+        <div className={styles.card}>
+          <div className={styles.brandTop}>{BRAND_TOP}</div>
+
+          <div className={styles.brandRow}>
+            <div className={styles.logoPole} aria-hidden />
+            <div className={styles.brandText}>
+              <div className={styles.brand}>{SHOP_NAME}</div>
+              <div className={styles.sub}>{SUBTITLE}</div>
+            </div>
           </div>
+
+          <h1 className={styles.title}>Accesso</h1>
+          <p className={styles.desc}>Inserisci la password admin per entrare nel pannello.</p>
+
+          <form onSubmit={onSubmit} className={styles.form} autoComplete="off">
+            {/* honey pot */}
+            <input
+              type="text"
+              name="username"
+              autoComplete="username"
+              tabIndex={-1}
+              aria-hidden="true"
+              style={{ position: "absolute", left: "-9999px", width: 1, height: 1, opacity: 0 }}
+            />
+
+            <label className={styles.label} htmlFor="adminPassword">
+              Password admin
+            </label>
+
+            <input
+              id="adminPassword"
+              name="password"
+              className={styles.input}
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              autoComplete="current-password"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
+            />
+
+            {msg ? <div className={styles.error}>{msg}</div> : null}
+
+            <button className={styles.button} type="submit" disabled={loading}>
+              {loading ? "Accesso..." : "Entra nel pannello"}
+            </button>
+
+            <div className={styles.hint}>
+              Consiglio: salva la password in un password manager. Non inviarla ai clienti.
+            </div>
+          </form>
+
+          <div className={styles.footer}>GalaxBot AI</div>
         </div>
-
-        <h1 className={styles.title}>Login</h1>
-
-        <form onSubmit={onSubmit} className={styles.form} autoComplete="off">
-          <input
-            type="text"
-            name="username"
-            autoComplete="username"
-            tabIndex={-1}
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              left: "-9999px",
-              width: 1,
-              height: 1,
-              opacity: 0,
-            }}
-          />
-
-          <label className={styles.label} htmlFor="adminPassword">
-            Password
-          </label>
-
-          <input
-            id="adminPassword"
-            name="password"
-            className={styles.input}
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            autoComplete="current-password"
-            autoCorrect="off"
-            autoCapitalize="none"
-            spellCheck={false}
-          />
-
-          {msg ? <div className={styles.error}>{msg}</div> : null}
-
-          <button className={styles.button} type="submit" disabled={loading}>
-            {loading ? "Accesso..." : "Entra"}
-          </button>
-        </form>
       </div>
     </div>
   );

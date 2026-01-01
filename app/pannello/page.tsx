@@ -34,6 +34,10 @@ type UpdateResponse =
   | { ok: true; status?: string; message?: string }
   | { ok: false; error?: string; conflict?: boolean; details?: any };
 
+type AvailabilityOk = { ok: true; freeSlots: string[] };
+type AvailabilityErr = { ok: false; error?: string; details?: any };
+type AvailabilityResponse = AvailabilityOk | AvailabilityErr;
+
 function normStatus(s?: string): BookingStatus {
   const up = (s || "").toUpperCase().trim();
   if (up === "CONFERMATA" || up === "ANNULLATA" || up === "NUOVA") return up;
@@ -190,6 +194,12 @@ export default function PannelloAdmin() {
 
   const [statusFilter, setStatusFilter] = useState<"TUTTE" | "NUOVA" | "CONFERMATA" | "ANNULLATA">("TUTTE");
 
+  // ✅ Disponibilità (orari liberi per una data)
+  const [availDate, setAvailDate] = useState<string>(todayISO());
+  const [availLoading, setAvailLoading] = useState(false);
+  const [availSlots, setAvailSlots] = useState<string[]>([]);
+  const [availMsg, setAvailMsg] = useState<string>("");
+
   const [toast, setToast] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
   const showToast = (type: "ok" | "err", msg: string) => {
     setToast({ type, msg });
@@ -302,13 +312,43 @@ export default function PannelloAdmin() {
     }
   };
 
+  const loadAvailability = async (isoDate: string) => {
+    setAvailLoading(true);
+    setAvailMsg("");
+    setAvailSlots([]);
+
+    try {
+      const res = await fetch("/api/availability", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: isoDate }),
+      });
+
+      const data: AvailabilityResponse = await safeJson(res);
+
+      if (!(data as any)?.ok) {
+        setAvailMsg((data as any)?.error || "Errore nel recupero disponibilità.");
+        return;
+      }
+
+      const free = Array.isArray((data as any)?.freeSlots) ? (data as any).freeSlots : [];
+      setAvailSlots(free);
+
+      if (free.length === 0) setAvailMsg("Nessun orario libero per questa data.");
+    } catch {
+      setAvailMsg("Errore di rete (disponibilità).");
+    } finally {
+      setAvailLoading(false);
+    }
+  };
+
   const login = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
 
     const pw = password.trim();
     if (!pw) {
-      setAuthError("Inserisci la password admin.");
+      setAuthError("Inserisci la password.");
       return;
     }
 
@@ -330,6 +370,7 @@ export default function PannelloAdmin() {
       setLoggedIn(true);
       showToast("ok", "Accesso effettuato.");
       await loadRows();
+      await loadAvailability(availDate);
     } catch {
       setAuthError("Errore rete durante il login.");
     }
@@ -341,6 +382,8 @@ export default function PannelloAdmin() {
     } catch {}
     setLoggedIn(false);
     setRows([]);
+    setAvailSlots([]);
+    setAvailMsg("");
     showToast("ok", "Logout effettuato.");
   };
 
@@ -366,6 +409,7 @@ export default function PannelloAdmin() {
 
       showToast("ok", `Stato aggiornato: ${next}`);
       await loadRows();
+      await loadAvailability(availDate);
     } catch {
       showToast("err", "Errore rete: stato non aggiornato.");
       await loadRows();
@@ -397,7 +441,10 @@ export default function PannelloAdmin() {
   }, []);
 
   useEffect(() => {
-    if (loggedIn) loadRows();
+    if (loggedIn) {
+      void loadRows();
+      void loadAvailability(availDate);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedIn]);
 
@@ -406,15 +453,20 @@ export default function PannelloAdmin() {
     if (!loggedIn) return;
 
     const id = window.setInterval(() => {
-      // se la tab non è visibile, evitiamo chiamate inutili
       if (document.hidden) return;
       void loadRows();
     }, 60_000);
 
     return () => window.clearInterval(id);
-
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedIn]);
+
+  // ✅ Se cambi data disponibilità, aggiorna subito
+  useEffect(() => {
+    if (!loggedIn) return;
+    void loadAvailability(availDate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availDate, loggedIn]);
 
   // =======================
   //  STILE “BARBIERE WOW”
@@ -581,7 +633,7 @@ export default function PannelloAdmin() {
       fontSize: 16, // evita zoom iOS
       fontWeight: 900,
     },
-    helper: { marginTop: 10, opacity: 0.8, fontSize: 13, lineHeight: 1.35 },
+    helperSmall: { marginTop: 8, opacity: 0.8, fontSize: 12, lineHeight: 1.3 },
     error: {
       marginTop: 10,
       padding: "10px 12px",
@@ -607,7 +659,7 @@ export default function PannelloAdmin() {
       display: "flex",
       gap: 10,
       flexWrap: "wrap",
-      alignItems: "center",
+      alignItems: "flex-start",
       justifyContent: "space-between",
       marginBottom: 12,
     },
@@ -629,6 +681,35 @@ export default function PannelloAdmin() {
       background:
         "linear-gradient(90deg, rgba(37,99,235,0.18), rgba(239,68,68,0.14), rgba(245,158,11,0.14))",
       border: "1px solid rgba(255,255,255,0.18)",
+    },
+
+    // ✅ box disponibilità
+    availBox: {
+      width: "100%",
+      borderRadius: 18,
+      border: "1px solid rgba(255,255,255,0.10)",
+      background: "rgba(255,255,255,0.05)",
+      padding: 12,
+      boxShadow: "0 18px 50px rgba(0,0,0,0.22)",
+    },
+    availTopRow: {
+      display: "flex",
+      gap: 10,
+      alignItems: "center",
+      justifyContent: "space-between",
+      flexWrap: "wrap",
+    },
+    availTitle: { fontWeight: 1100, letterSpacing: 0.2, display: "inline-flex", gap: 8, alignItems: "center" },
+    slotsWrap: { marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" },
+    slotChip: {
+      padding: "8px 10px",
+      borderRadius: 999,
+      border: "1px solid rgba(255,255,255,0.14)",
+      background: "rgba(255,255,255,0.06)",
+      fontWeight: 1000,
+      fontSize: 12,
+      color: "rgba(255,255,255,0.92)",
+      backdropFilter: "blur(8px)",
     },
 
     list: { display: "grid", gap: 12 },
@@ -703,7 +784,6 @@ export default function PannelloAdmin() {
     },
     miniGreen: { border: "1px solid rgba(34,197,94,0.30)", background: "rgba(34,197,94,0.12)" },
     miniRed: { border: "1px solid rgba(239,68,68,0.30)", background: "rgba(239,68,68,0.12)" },
-    miniYellow: { border: "1px solid rgba(245,158,11,0.30)", background: "rgba(245,158,11,0.12)" },
     miniBlue: { border: "1px solid rgba(37,99,235,0.28)", background: "rgba(37,99,235,0.10)" },
 
     footer: { marginTop: 14, opacity: 0.7, fontSize: 12, textAlign: "center" },
@@ -741,12 +821,11 @@ export default function PannelloAdmin() {
                   <span style={styles.scissors} aria-hidden>
                     ✂️
                   </span>
-                  <h1 style={styles.h1}>Idee per la Testa</h1>
+                  <h1 style={styles.h1}>Prenotazioni · Idee per la Testa</h1>
                 </div>
 
-                <p style={styles.sub}>
-                  Pannello prenotazioni: vedi <b>Nome</b>, <b>Telefono</b>, <b>Data</b>, <b>Ora</b>, <b>Servizio</b> e aggiorni lo stato in un tap.
-                </p>
+                {/* ✅ tolta la frase lunga */}
+                <p style={styles.sub}>Pannello prenotazioni</p>
 
                 {loggedIn && (
                   <div style={styles.chipsRow}>
@@ -777,8 +856,10 @@ export default function PannelloAdmin() {
 
         <div style={styles.panel}>
           <div style={styles.panelHeader}>
-            <div style={styles.panelTitle}>{loggedIn ? "Prenotazioni" : "Login Admin"}</div>
-            <div style={{ opacity: 0.85, fontSize: 12 }}>{loggedIn ? "Conferma/Annulla → apre WhatsApp con messaggio pronto" : ""}</div>
+            <div style={styles.panelTitle}>{loggedIn ? "Prenotazioni" : "Login"}</div>
+            <div style={{ opacity: 0.85, fontSize: 12 }}>
+              {loggedIn ? "Conferma/Annulla → apre WhatsApp con messaggio pronto" : ""}
+            </div>
           </div>
 
           <div style={styles.body}>
@@ -787,7 +868,8 @@ export default function PannelloAdmin() {
             ) : !loggedIn ? (
               <div style={styles.loginBox}>
                 <form onSubmit={login}>
-                  <label style={styles.label}>Password admin</label>
+                  {/* ✅ solo "Password" */}
+                  <label style={styles.label}>Password</label>
                   <input
                     style={styles.input}
                     type="password"
@@ -801,23 +883,57 @@ export default function PannelloAdmin() {
                     <button type="submit" style={styles.btnPrimary}>
                       Entra
                     </button>
-                    <button type="button" style={styles.btn} onClick={checkMe}>
-                      Rileva sessione
-                    </button>
+
+                    {/* ✅ tolto "Rileva sessione" */}
                   </div>
 
                   {authError && <div style={styles.error}>{authError}</div>}
 
-                  <div style={styles.helper}>
-                    Se non entra: controlla in <b>.env.local</b> che <b>ADMIN_PASSWORD</b> e <b>ADMIN_SESSION_SECRET</b> esistano, poi riavvia{" "}
-                    <b>npm run dev</b>.
-                  </div>
+                  {/* ✅ tolta la scritta "Se non entra..." */}
                 </form>
               </div>
             ) : (
               <>
+                {/* ✅ DISPONIBILITÀ */}
+                <div style={{ marginBottom: 12 }}>
+                  <div style={styles.availBox}>
+                    <div style={styles.availTopRow}>
+                      <div style={styles.availTitle}>🕒 Disponibilità (orari liberi)</div>
+
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                        <input
+                          style={{ ...styles.input, width: 170 }}
+                          type="date"
+                          value={availDate}
+                          onChange={(e) => setAvailDate(e.target.value)}
+                          aria-label="Scegli data disponibilità"
+                        />
+
+                        <button style={styles.btn} onClick={() => loadAvailability(availDate)} disabled={availLoading}>
+                          {availLoading ? "Carico…" : "Aggiorna disponibilità"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {availSlots.length > 0 ? (
+                      <div style={styles.slotsWrap}>
+                        {availSlots.map((s) => (
+                          <div key={s} style={styles.slotChip}>
+                            {s}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {availMsg ? <div style={styles.helperSmall}>{availMsg}</div> : null}
+                    {!availMsg && availSlots.length === 0 && !availLoading ? (
+                      <div style={styles.helperSmall}>Seleziona una data per vedere gli orari disponibili.</div>
+                    ) : null}
+                  </div>
+                </div>
+
                 <div style={styles.tools}>
-                  <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ display: "grid", gap: 8, width: "100%" }}>
                     <div style={styles.pillRow}>
                       {[
                         { k: "TUTTO", label: "Tutto" },
@@ -842,7 +958,7 @@ export default function PannelloAdmin() {
                           type="date"
                           value={pickDate}
                           onChange={(e) => setPickDate(e.target.value)}
-                          aria-label="Scegli data"
+                          aria-label="Scegli data filtro"
                         />
                       )}
                     </div>
@@ -948,10 +1064,6 @@ export default function PannelloAdmin() {
                             >
                               💬 WhatsApp
                             </a>
-
-                            <button style={{ ...styles.miniBtn, ...styles.miniYellow }} onClick={() => setStatus(r.id, "NUOVA")}>
-                              🟡 Nuova
-                            </button>
 
                             <button style={{ ...styles.miniBtn, ...styles.miniGreen }} onClick={() => confirmWhatsApp(r)}>
                               ✅ Conferma (WhatsApp)

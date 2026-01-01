@@ -29,7 +29,7 @@ export default function LoginClient() {
     try {
       const r = await fetch("/api/admin/login", {
         method: "POST",
-        credentials: "include", // ✅ cookie sessione (sicuro anche su vercel)
+        credentials: "include", // ✅ cookie sessione
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password: p }),
       });
@@ -65,7 +65,6 @@ export default function LoginClient() {
           </div>
 
           <h1 className={styles.title}>Accesso</h1>
-          <p className={styles.desc}>Inserisci la password admin per entrare nel pannello.</p>
 
           <form onSubmit={onSubmit} className={styles.form} autoComplete="off">
             {/* honey pot */}
@@ -79,7 +78,7 @@ export default function LoginClient() {
             />
 
             <label className={styles.label} htmlFor="adminPassword">
-              Password admin
+              Password
             </label>
 
             <input
@@ -101,10 +100,6 @@ export default function LoginClient() {
             <button className={styles.button} type="submit" disabled={loading}>
               {loading ? "Accesso..." : "Entra nel pannello"}
             </button>
-
-            <div className={styles.hint}>
-              Consiglio: salva la password in un password manager. Non inviarla ai clienti.
-            </div>
           </form>
 
           <div className={styles.footer}>GalaxBot AI</div>

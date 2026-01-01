@@ -1,3 +1,4 @@
+// app/page.tsx
 "use client";
 
 import React, { useMemo, useRef, useState } from "react";
@@ -18,9 +19,6 @@ export default function HomePage() {
   // Fallback (se config manca qualcosa)
   const brandTop = biz?.labelTop ?? "GALAXBOT AI · BARBER SHOP";
   const title = biz?.title ?? "Idee per la Testa";
-  const subtitle =
-    biz?.subtitle ??
-    "Un assistente virtuale che gestisce richieste, prenotazioni e cancellazioni per il tuo barber shop, 24 ore su 24.";
 
   const services = biz?.servicesShort ?? "Taglio, barba, sfumature, styling, bimbi";
   const city = biz?.city ?? "Castelnuovo Vomano (TE)";
@@ -32,7 +30,6 @@ export default function HomePage() {
 
   const [showHelp, setShowHelp] = useState(false);
 
-  // ref con non-null assertion per evitare rogne TypeScript sui ref
   const refBook = useRef<HTMLDivElement>(null!);
   const refCancel = useRef<HTMLDivElement>(null!);
 
@@ -61,23 +58,19 @@ export default function HomePage() {
       fontSize: 12,
       letterSpacing: 0.8,
       textTransform: "uppercase",
+      justifyContent: "center",
+      width: "100%",
     },
-    hero: { marginTop: 12, padding: "14px 2px 10px" },
+    hero: { marginTop: 12, padding: "14px 2px 10px", textAlign: "center" },
     h1: {
       fontSize: 44,
       lineHeight: 1.05,
       margin: "8px 0 10px",
       fontWeight: 800,
       textShadow: "0 12px 40px rgba(0,0,0,0.35)",
+      textAlign: "center",
     },
-    subtitle: {
-      fontSize: 16,
-      lineHeight: 1.5,
-      opacity: 0.9,
-      maxWidth: 760,
-      marginBottom: 14,
-    },
-    actionsRow: { display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10 },
+    actionsRow: { display: "flex", flexWrap: "wrap", gap: 10, marginTop: 14, justifyContent: "center" },
     btn: {
       cursor: "pointer",
       padding: "10px 14px",
@@ -98,7 +91,7 @@ export default function HomePage() {
       background: "linear-gradient(90deg, #2f7dff 0%, #49c6ff 120%)",
       color: "#061a3a",
     },
-    smallHint: { marginTop: 10, fontSize: 13, opacity: 0.85 },
+    smallHint: { marginTop: 12, fontSize: 13, opacity: 0.85, textAlign: "center" },
     grid: { marginTop: 18, display: "grid", gridTemplateColumns: "1fr", gap: 16 },
     card: {
       borderRadius: 18,
@@ -157,7 +150,6 @@ export default function HomePage() {
           <h1 style={styles.h1}>
             {title} <span aria-hidden>💈</span>
           </h1>
-          <p style={styles.subtitle}>{subtitle}</p>
 
           <div style={styles.actionsRow}>
             <button style={{ ...styles.btn, ...styles.btnPrimary }} onClick={() => scrollTo(refBook)}>
@@ -210,9 +202,8 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* ASSISTENZA (Chat a pulsante) */}
+          {/* ASSISTENZA */}
           <div style={styles.card}>
-            {/* ✅ qui era il bug: avevi due "style" nello stesso div */}
             <div style={{ ...styles.cardInner, paddingBottom: 10 }}>
               <div style={styles.helpTop}>
                 <div>
@@ -249,26 +240,12 @@ export default function HomePage() {
           {/* PRENOTA */}
           <div ref={refBook} style={styles.card}>
             <div style={styles.cardInner}>
-              <h2 style={styles.cardTitle}>Prenota adesso ✅</h2>
-              <div style={styles.cardSub}>
-                Ti mostriamo <b>solo gli orari disponibili</b> per la data scelta.
-              </div>
-            </div>
-            <div style={styles.divider} />
-            <div style={styles.cardInner}>
               <FastBookingForm />
             </div>
           </div>
 
           {/* ANNULLA */}
           <div ref={refCancel} style={styles.card}>
-            <div style={styles.cardInner}>
-              <h2 style={styles.cardTitle}>Annulla prenotazione ✖️</h2>
-              <div style={styles.cardSub}>
-                Usa lo stesso <b>telefono</b> e la stessa <b>data + ora</b> della prenotazione.
-              </div>
-            </div>
-            <div style={styles.divider} />
             <div style={styles.cardInner}>
               <CancelBookingForm />
             </div>
@@ -277,6 +254,13 @@ export default function HomePage() {
 
         <footer style={styles.footer}>Powered by GalaxBot AI</footer>
       </div>
+
+      <style>{`
+        * { box-sizing: border-box; }
+        input, select, textarea { max-width: 100%; }
+        input[type="date"], select { width: 100%; }
+        .mm-row, .mm-grid, .mm-col { min-width: 0; }
+      `}</style>
     </main>
   );
 }

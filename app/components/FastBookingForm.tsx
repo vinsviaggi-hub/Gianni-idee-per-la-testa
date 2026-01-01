@@ -10,14 +10,7 @@ type CreateOk = { ok: true; message?: string };
 type CreateErr = { ok: false; error: string; conflict?: boolean };
 type CreateResponse = CreateOk | CreateErr;
 
-const SERVICES = [
-  "Taglio uomo",
-  "Barba",
-  "Taglio + barba",
-  "Sfumatura",
-  "Bimbo",
-  "Styling",
-];
+const SERVICES = ["Taglio uomo", "Barba", "Taglio + barba", "Sfumatura", "Bimbo", "Styling"];
 
 function toISODate(d: Date) {
   const y = d.getFullYear();
@@ -40,7 +33,6 @@ export default function FastBookingForm() {
   const [service, setService] = useState(SERVICES[0]);
   const [dateISO, setDateISO] = useState(todayISO);
   const [time, setTime] = useState("");
-  const [notes, setNotes] = useState("");
 
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [slots, setSlots] = useState<string[]>([]);
@@ -114,7 +106,6 @@ export default function FastBookingForm() {
 
     setSubmitting(true);
     try {
-      // ✅ QUI ERA IL PROBLEMA: prima chiamava /api/barber-booking (404)
       const res = await fetch("/api/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -125,7 +116,7 @@ export default function FastBookingForm() {
           service,
           date: dateISO,
           time,
-          notes: notes.trim(),
+          // ✅ NOTE RIMOSSE (non mandiamo nulla)
         }),
       });
 
@@ -140,7 +131,6 @@ export default function FastBookingForm() {
       if (!data.ok) {
         setResultType(data.conflict ? "warn" : "err");
         setResultMsg(data.error || "Errore durante la prenotazione.");
-        // se conflitto, ricarico disponibilità per aggiornare la tendina
         if (data.conflict) {
           await loadAvailability(dateISO);
         }
@@ -153,7 +143,6 @@ export default function FastBookingForm() {
       // reset leggero (lascia data/servizio)
       setName("");
       setPhone("");
-      setNotes("");
 
       // ricarica disponibilità: lo slot appena preso deve sparire
       await loadAvailability(dateISO);
@@ -172,6 +161,7 @@ export default function FastBookingForm() {
       background: "linear-gradient(180deg, rgba(11,28,68,0.72), rgba(11,28,68,0.45))",
       padding: 16,
       boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+      overflow: "hidden",
     },
     title: { fontSize: 22, fontWeight: 900, margin: 0, color: "rgba(255,255,255,0.92)" },
     subtitle: { marginTop: 4, marginBottom: 14, color: "rgba(255,255,255,0.75)" },
@@ -185,10 +175,12 @@ export default function FastBookingForm() {
       background: "rgba(0,0,0,0.20)",
       color: "rgba(255,255,255,0.92)",
       outline: "none",
-      fontSize: 15,
+      fontSize: 16, // evita zoom iOS
+      boxSizing: "border-box",
+      maxWidth: "100%",
     },
     row2: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
-    row3: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 },
+    row1: { display: "grid", gridTemplateColumns: "1fr", gap: 12 },
     btn: {
       width: "100%",
       border: "0",
@@ -293,7 +285,8 @@ export default function FastBookingForm() {
           </div>
         </div>
 
-        <div style={styles.row2}>
+        {/* ✅ ORA in riga singola (niente Note) */}
+        <div style={styles.row1}>
           <div>
             <div style={styles.label}>Ora disponibile *</div>
             <select
@@ -316,16 +309,6 @@ export default function FastBookingForm() {
             </select>
             {slotsMsg ? <div style={styles.helper}>{slotsMsg}</div> : null}
           </div>
-
-          <div>
-            <div style={styles.label}>Note (facoltative)</div>
-            <input
-              style={styles.input}
-              placeholder="Es. Preferisco mattina / taglio + barba / ecc."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-          </div>
         </div>
 
         <button type="submit" style={styles.btn} disabled={submitting}>
@@ -338,6 +321,17 @@ export default function FastBookingForm() {
           </div>
         ) : null}
       </form>
+
+      <style>{`
+        * { box-sizing: border-box; }
+        input, select { max-width: 100%; }
+        @media (max-width: 760px) {
+          /* se in futuro rimetti 2 colonne, su mobile torna a 1 */
+          form > div[style*="grid-template-columns: 1fr 1fr"] {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
     </section>
   );
 }

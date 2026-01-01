@@ -125,8 +125,7 @@ function nameBadgeStyle(): CSSProperties {
     padding: "8px 12px",
     borderRadius: 999,
     border: "1px solid rgba(255,255,255,0.18)",
-    background:
-      "linear-gradient(135deg, rgba(37,99,235,0.92), rgba(239,68,68,0.82))",
+    background: "linear-gradient(135deg, rgba(37,99,235,0.92), rgba(239,68,68,0.82))",
     color: "white",
     fontWeight: 1000,
     letterSpacing: 0.2,
@@ -170,9 +169,7 @@ function accentForIndex(i: number) {
   };
   const borderGlow: CSSProperties = {
     border: "1px solid rgba(255,255,255,0.10)",
-    boxShadow: isBlue
-      ? "0 14px 40px rgba(37,99,235,0.10)"
-      : "0 14px 40px rgba(239,68,68,0.08)",
+    boxShadow: isBlue ? "0 14px 40px rgba(37,99,235,0.10)" : "0 14px 40px rgba(239,68,68,0.08)",
   };
   return { bar, borderGlow };
 }
@@ -404,6 +401,21 @@ export default function PannelloAdmin() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedIn]);
 
+  // ✅ AUTO-AGGIORNAMENTO ogni 60 secondi (solo quando sei loggato)
+  useEffect(() => {
+    if (!loggedIn) return;
+
+    const id = window.setInterval(() => {
+      // se la tab non è visibile, evitiamo chiamate inutili
+      if (document.hidden) return;
+      void loadRows();
+    }, 60_000);
+
+    return () => window.clearInterval(id);
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loggedIn]);
+
   // =======================
   //  STILE “BARBIERE WOW”
   // =======================
@@ -424,8 +436,7 @@ export default function PannelloAdmin() {
     header: {
       borderRadius: 20,
       border: "1px solid rgba(255,255,255,0.10)",
-      background:
-        "linear-gradient(135deg, rgba(10,14,24,0.92), rgba(10,14,24,0.72))",
+      background: "linear-gradient(135deg, rgba(10,14,24,0.92), rgba(10,14,24,0.72))",
       boxShadow: "0 22px 70px rgba(0,0,0,0.55)",
       overflow: "hidden",
       position: "relative",
@@ -767,9 +778,7 @@ export default function PannelloAdmin() {
         <div style={styles.panel}>
           <div style={styles.panelHeader}>
             <div style={styles.panelTitle}>{loggedIn ? "Prenotazioni" : "Login Admin"}</div>
-            <div style={{ opacity: 0.85, fontSize: 12 }}>
-              {loggedIn ? "Conferma/Annulla → apre WhatsApp con messaggio pronto" : ""}
-            </div>
+            <div style={{ opacity: 0.85, fontSize: 12 }}>{loggedIn ? "Conferma/Annulla → apre WhatsApp con messaggio pronto" : ""}</div>
           </div>
 
           <div style={styles.body}>
@@ -800,8 +809,8 @@ export default function PannelloAdmin() {
                   {authError && <div style={styles.error}>{authError}</div>}
 
                   <div style={styles.helper}>
-                    Se non entra: controlla in <b>.env.local</b> che <b>ADMIN_PASSWORD</b> e <b>ADMIN_SESSION_SECRET</b> esistano,
-                    poi riavvia <b>npm run dev</b>.
+                    Se non entra: controlla in <b>.env.local</b> che <b>ADMIN_PASSWORD</b> e <b>ADMIN_SESSION_SECRET</b> esistano, poi riavvia{" "}
+                    <b>npm run dev</b>.
                   </div>
                 </form>
               </div>

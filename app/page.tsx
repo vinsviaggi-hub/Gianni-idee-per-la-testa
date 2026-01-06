@@ -1,4 +1,3 @@
-// app/page.tsx
 "use client";
 
 import React, { useMemo, useRef, useState } from "react";
@@ -14,6 +13,13 @@ export default function HomePage() {
     } catch {
       return {} as any;
     }
+  }, []);
+
+  // ✅ piccola ottimizzazione tablet: blur più leggero
+  const lowPower = useMemo(() => {
+    if (typeof navigator === "undefined") return false;
+    const ua = navigator.userAgent || "";
+    return /iPad|Android/i.test(ua);
   }, []);
 
   // Fallback (se config manca qualcosa)
@@ -43,7 +49,7 @@ export default function HomePage() {
       background:
         "radial-gradient(900px 600px at 18% 10%, rgba(120,170,255,0.35), transparent 55%), radial-gradient(900px 600px at 80% 20%, rgba(255,90,90,0.28), transparent 55%), linear-gradient(180deg, #061a3a 0%, #062a6a 55%, #041534 100%)",
       color: "rgba(255,255,255,0.92)",
-      padding: "26px 14px 40px",
+      padding: "clamp(18px, 3.2vw, 26px) clamp(12px, 2.4vw, 14px) 40px",
     },
     shell: { maxWidth: 980, margin: "0 auto" },
     topPill: {
@@ -54,34 +60,45 @@ export default function HomePage() {
       borderRadius: 999,
       background: "rgba(255,255,255,0.10)",
       border: "1px solid rgba(255,255,255,0.14)",
-      backdropFilter: "blur(10px)",
+      backdropFilter: lowPower ? undefined : "blur(10px)",
       fontSize: 12,
       letterSpacing: 0.8,
       textTransform: "uppercase",
       justifyContent: "center",
       width: "100%",
+      textAlign: "center",
     },
     hero: { marginTop: 12, padding: "14px 2px 10px", textAlign: "center" },
     h1: {
-      fontSize: 44,
+      fontSize: "clamp(32px, 6vw, 44px)", // ✅ si adatta (telefono/tablet/desktop)
       lineHeight: 1.05,
       margin: "8px 0 10px",
       fontWeight: 800,
       textShadow: "0 12px 40px rgba(0,0,0,0.35)",
       textAlign: "center",
+      wordBreak: "break-word",
     },
-    actionsRow: { display: "flex", flexWrap: "wrap", gap: 10, marginTop: 14, justifyContent: "center" },
+    actionsRow: {
+      display: "flex",
+      flexWrap: "wrap",
+      gap: 10,
+      marginTop: 14,
+      justifyContent: "center",
+    },
     btn: {
       cursor: "pointer",
-      padding: "10px 14px",
+      padding: "11px 14px",
       borderRadius: 12,
-      fontWeight: 700,
+      fontWeight: 800,
       fontSize: 14,
       color: "rgba(255,255,255,0.95)",
       background: "rgba(255,255,255,0.14)",
       border: "1px solid rgba(255,255,255,0.16)",
       borderLeft: "1px solid rgba(255,255,255,0.10)",
       transition: "transform .08s ease, filter .08s ease",
+      minHeight: 44, // ✅ touch
+      flex: "1 1 140px", // ✅ su mobile va a righe, su tablet si allinea bene
+      maxWidth: 260,
     },
     btnPrimary: {
       background: "linear-gradient(90deg, #ff4b4b 0%, #ff7a3d 55%, #ffcc5c 120%)",
@@ -91,16 +108,21 @@ export default function HomePage() {
       background: "linear-gradient(90deg, #2f7dff 0%, #49c6ff 120%)",
       color: "#061a3a",
     },
-    smallHint: { marginTop: 12, fontSize: 13, opacity: 0.85, textAlign: "center" },
-    grid: { marginTop: 18, display: "grid", gridTemplateColumns: "1fr", gap: 16 },
+    smallHint: { marginTop: 12, fontSize: 13, opacity: 0.85, textAlign: "center", lineHeight: 1.4 },
+    grid: {
+      marginTop: 18,
+      display: "grid",
+      gridTemplateColumns: "1fr",
+      gap: 16,
+    },
     card: {
       borderRadius: 18,
       background: "rgba(255,255,255,0.08)",
       border: "1px solid rgba(255,255,255,0.14)",
-      boxShadow: "0 18px 55px rgba(0,0,0,0.28)",
+      boxShadow: lowPower ? "0 10px 28px rgba(0,0,0,0.22)" : "0 18px 55px rgba(0,0,0,0.28)",
       overflow: "hidden",
     },
-    cardInner: { padding: "16px 16px 14px" },
+    cardInner: { padding: "clamp(14px, 2.3vw, 16px) clamp(14px, 2.3vw, 16px) 14px" },
     cardTitle: {
       fontSize: 18,
       fontWeight: 800,
@@ -117,18 +139,20 @@ export default function HomePage() {
       alignItems: "center",
       justifyContent: "space-between",
       gap: 10,
+      flexWrap: "wrap",
     },
     helpBtn: {
       cursor: "pointer",
-      padding: "10px 14px",
+      padding: "11px 14px",
       borderRadius: 12,
-      fontWeight: 800,
+      fontWeight: 900,
       fontSize: 14,
       border: "0",
       background: showHelp
         ? "rgba(255,255,255,0.14)"
         : "linear-gradient(90deg, #2f7dff 0%, #49c6ff 120%)",
       color: showHelp ? "rgba(255,255,255,0.95)" : "#061a3a",
+      minHeight: 44, // ✅ touch
     },
     footer: {
       marginTop: 18,
@@ -168,9 +192,9 @@ export default function HomePage() {
           </div>
         </header>
 
-        <section style={styles.grid}>
+        <section style={styles.grid} className="mm-home-grid">
           {/* INFO */}
-          <div style={styles.card}>
+          <div style={styles.card} className="mm-card mm-info">
             <div style={styles.cardInner}>
               <h2 style={styles.cardTitle}>Informazioni principali</h2>
               <ul style={styles.list}>
@@ -203,7 +227,7 @@ export default function HomePage() {
           </div>
 
           {/* ASSISTENZA */}
-          <div style={styles.card}>
+          <div style={styles.card} className="mm-card mm-help">
             <div style={{ ...styles.cardInner, paddingBottom: 10 }}>
               <div style={styles.helpTop}>
                 <div>
@@ -238,14 +262,14 @@ export default function HomePage() {
           </div>
 
           {/* PRENOTA */}
-          <div ref={refBook} style={styles.card}>
+          <div ref={refBook} style={styles.card} className="mm-card mm-span2">
             <div style={styles.cardInner}>
               <FastBookingForm />
             </div>
           </div>
 
           {/* ANNULLA */}
-          <div ref={refCancel} style={styles.card}>
+          <div ref={refCancel} style={styles.card} className="mm-card mm-span2">
             <div style={styles.cardInner}>
               <CancelBookingForm />
             </div>
@@ -260,6 +284,17 @@ export default function HomePage() {
         input, select, textarea { max-width: 100%; }
         input[type="date"], select { width: 100%; }
         .mm-row, .mm-grid, .mm-col { min-width: 0; }
+
+        /* ✅ Tablet/desktop: 2 colonne (Info + Assistenza), ma Prenota/Annulla full width */
+        @media (min-width: 900px) {
+          .mm-home-grid {
+            grid-template-columns: 1fr 1fr !important;
+            align-items: start;
+          }
+          .mm-span2 {
+            grid-column: 1 / -1;
+          }
+        }
       `}</style>
     </main>
   );

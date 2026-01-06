@@ -1,4 +1,3 @@
-// app/pannello/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
@@ -82,7 +81,7 @@ async function safeJson(res: Response) {
   }
 }
 
-function toastStyle(type: "ok" | "err"): CSSProperties {
+function toastStyle(type: "ok" | "err", lowPower: boolean): CSSProperties {
   return {
     pointerEvents: "none",
     padding: "10px 12px",
@@ -91,11 +90,11 @@ function toastStyle(type: "ok" | "err"): CSSProperties {
     background: type === "ok" ? "rgba(34,197,94,0.14)" : "rgba(239,68,68,0.14)",
     color: "rgba(255,255,255,0.92)",
     fontWeight: 950,
-    boxShadow: "0 18px 55px rgba(0,0,0,0.45)",
+    boxShadow: lowPower ? "0 10px 26px rgba(0,0,0,0.28)" : "0 18px 55px rgba(0,0,0,0.45)",
     maxWidth: 860,
     width: "100%",
     textAlign: "center",
-    backdropFilter: "blur(10px)",
+    backdropFilter: lowPower ? undefined : "blur(10px)",
   };
 }
 
@@ -160,6 +159,14 @@ function statusPillStyle(st: BookingStatus): CSSProperties {
   };
 }
 
+// ✅ bordo completo in base allo stato (NUOVA = dorato)
+function cardBorderColor(st: BookingStatus) {
+  const s = normStatus(st);
+  if (s === "CONFERMATA") return "rgba(34,197,94,0.30)";
+  if (s === "ANNULLATA") return "rgba(239,68,68,0.30)";
+  return "rgba(245,158,11,0.45)";
+}
+
 /** Striscia “barber pole” laterale sulle card */
 function accentForIndex(i: number) {
   const isBlue = i % 2 === 0;
@@ -173,7 +180,7 @@ function accentForIndex(i: number) {
   };
   const borderGlow: CSSProperties = {
     border: "1px solid rgba(255,255,255,0.10)",
-    boxShadow: isBlue ? "0 14px 40px rgba(37,99,235,0.10)" : "0 14px 40px rgba(239,68,68,0.08)",
+    boxShadow: isBlue ? "0 10px 26px rgba(37,99,235,0.08)" : "0 10px 26px rgba(239,68,68,0.06)",
   };
   return { bar, borderGlow };
 }
@@ -204,13 +211,25 @@ function playBeepSafe() {
 function speakIt(text: string) {
   try {
     if (!("speechSynthesis" in window)) return;
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = "it-IT";
-    u.rate = 0.9; // ✅ più lento
-    u.pitch = 1;
-    u.volume = 1;
-    window.speechSynthesis.cancel(); // evita sovrapposizioni
-    window.speechSynthesis.speak(u);
+
+    const raw = String(text || "").replace(/\s+/g, " ").trim();
+    if (!raw) return;
+
+    const parts = raw
+      .split(/(?<=[.!?])\s+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    window.speechSynthesis.cancel();
+
+    for (const p of parts) {
+      const u = new SpeechSynthesisUtterance(p);
+      u.lang = "it-IT";
+      u.rate = 0.9;
+      u.pitch = 1;
+      u.volume = 1;
+      window.speechSynthesis.speak(u);
+    }
   } catch {}
 }
 
@@ -220,12 +239,21 @@ function buildVoiceText(newOnes: AdminRow[]) {
     const nome = (r.nome || "cliente").toString().trim();
     const data = toITDate(r.dataISO);
     const ora = r.ora || "";
-    return `Nuova prenotazione: ${nome}, ${data} alle ${ora}.`;
+    return `Nuova prenotazione. ${nome}. Data ${data}. Ore ${ora}.`;
   }
   return `Arrivate ${newOnes.length} nuove prenotazioni.`;
 }
 
 export default function PannelloAdmin() {
+  // ✅ LOW POWER MODE: evita blocchi su tablet (blur/ombre pesanti + troppe card)
+  const lowPower = useMemo(() => {
+    if (typeof navigator === "undefined") return false;
+    const ua = navigator.userAgent || "";
+    return /iPad|Android/i.test(ua);
+  }, []);
+
+  const MAX_RENDER = lowPower ? 140 : 800;
+
   const [checking, setChecking] = useState(true);
   const [loggedIn, setLoggedIn] = useState(false);
 
@@ -241,13 +269,11 @@ export default function PannelloAdmin() {
 
   const [statusFilter, setStatusFilter] = useState<"TUTTE" | "NUOVA" | "CONFERMATA" | "ANNULLATA">("TUTTE");
 
-  // ✅ Disponibilità (orari liberi per una data)
   const [availDate, setAvailDate] = useState<string>(todayISO());
   const [availLoading, setAvailLoading] = useState(false);
   const [availSlots, setAvailSlots] = useState<string[]>([]);
   const [availMsg, setAvailMsg] = useState<string>("");
 
-  // ✅ Suono/Voce
   const [soundOn, setSoundOn] = useState(true);
   const [voiceOn, setVoiceOn] = useState(false);
 
@@ -260,7 +286,6 @@ export default function PannelloAdmin() {
     window.setTimeout(() => setToast(null), 2400);
   };
 
-  // ✅ carica/salva preferenze suono/voce
   useEffect(() => {
     try {
       const s = window.localStorage.getItem("mm_admin_sound");
@@ -327,6 +352,12 @@ export default function PannelloAdmin() {
       });
   }, [rows, dayMode, pickDate, statusFilter]);
 
+  // ✅ limite render per tablet: evita freeze
+  const visible = useMemo(() => {
+    if (filtered.length <= MAX_RENDER) return filtered;
+    return filtered.slice(0, MAX_RENDER);
+  }, [filtered, MAX_RENDER]);
+
   const checkMe = async () => {
     setChecking(true);
     setAuthError(null);
@@ -344,7 +375,6 @@ export default function PannelloAdmin() {
   };
 
   const maybeNotifyNewRows = (normalized: AdminRow[]) => {
-    // prima load: non notificare
     if (!firstRowsLoadDoneRef.current) {
       firstRowsLoadDoneRef.current = true;
       seenIdsRef.current = new Set(normalized.map((x) => x.id));
@@ -354,12 +384,9 @@ export default function PannelloAdmin() {
     const seen = seenIdsRef.current;
     const newOnes = normalized.filter((x) => !seen.has(x.id));
 
-    // aggiorna set
     normalized.forEach((x) => seen.add(x.id));
 
     if (newOnes.length === 0) return;
-
-    // solo se pagina visibile (evita spam quando tab in background)
     if (document.hidden) return;
 
     if (soundOn) playBeepSafe();
@@ -464,7 +491,6 @@ export default function PannelloAdmin() {
       setLoggedIn(true);
       showToast("ok", "Accesso effettuato.");
 
-      // ✅ prima load dopo login: NON notificare
       firstRowsLoadDoneRef.current = false;
       seenIdsRef.current = new Set();
 
@@ -541,7 +567,6 @@ export default function PannelloAdmin() {
 
   useEffect(() => {
     if (loggedIn) {
-      // ✅ prima load quando già loggato: NON notificare
       firstRowsLoadDoneRef.current = false;
       seenIdsRef.current = new Set();
 
@@ -551,362 +576,367 @@ export default function PannelloAdmin() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedIn]);
 
-  // ✅ AUTO-AGGIORNAMENTO ogni 60 secondi (solo quando sei loggato)
+  // ✅ refresh un filo più “soft” (tablet ringrazia)
   useEffect(() => {
     if (!loggedIn) return;
 
     const id = window.setInterval(() => {
       if (document.hidden) return;
       void loadRows();
-    }, 60_000);
+    }, 75_000);
 
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedIn]);
 
-  // ✅ Se cambi data disponibilità, aggiorna subito
   useEffect(() => {
     if (!loggedIn) return;
     void loadAvailability(availDate);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [availDate, loggedIn]);
 
-  // =======================
-  //  STILE “BARBIERE WOW”
-  // =======================
-  const styles: Record<string, CSSProperties> = {
-    page: {
-      minHeight: "100vh",
-      padding: "18px 12px 36px",
-      background:
-        "radial-gradient(1100px 640px at 12% 0%, rgba(37,99,235,0.16), transparent 60%)," +
+  // ✅ styles in useMemo (non ricreati ad ogni render)
+  const styles = useMemo<Record<string, CSSProperties>>(() => {
+    const pageBg = lowPower
+      ? "linear-gradient(180deg, #070b12 0%, #0b1220 55%, #070b12 100%)"
+      : "radial-gradient(1100px 640px at 12% 0%, rgba(37,99,235,0.16), transparent 60%)," +
         "radial-gradient(1100px 640px at 88% 10%, rgba(239,68,68,0.16), transparent 60%)," +
         "radial-gradient(1000px 620px at 50% 100%, rgba(245,158,11,0.12), transparent 62%)," +
-        "linear-gradient(180deg, #070b12 0%, #0b1220 55%, #070b12 100%)",
-      color: "rgba(255,255,255,0.92)",
-      fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial",
-    },
-    container: { maxWidth: 1120, margin: "0 auto" },
+        "linear-gradient(180deg, #070b12 0%, #0b1220 55%, #070b12 100%)";
 
-    header: {
-      borderRadius: 20,
-      border: "1px solid rgba(255,255,255,0.10)",
-      background: "linear-gradient(135deg, rgba(10,14,24,0.92), rgba(10,14,24,0.72))",
-      boxShadow: "0 22px 70px rgba(0,0,0,0.55)",
-      overflow: "hidden",
-      position: "relative",
-    },
-    headerStripe: {
-      position: "absolute",
-      inset: "0 0 auto 0",
-      height: 6,
-      background:
-        "linear-gradient(90deg, rgba(37,99,235,0.95), rgba(255,255,255,0.85), rgba(239,68,68,0.95), rgba(245,158,11,0.85))",
-      opacity: 0.85,
-    },
-    headerInner: { padding: "16px 16px 14px", position: "relative" },
+    return {
+      page: {
+        minHeight: "100vh",
+        padding: "18px 12px 36px",
+        background: pageBg,
+        color: "rgba(255,255,255,0.92)",
+        fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial",
+      },
+      container: { maxWidth: 1120, margin: "0 auto" },
 
-    topRow: {
-      display: "flex",
-      gap: 14,
-      alignItems: "flex-start",
-      justifyContent: "space-between",
-      flexWrap: "wrap",
-    },
+      header: {
+        borderRadius: 20,
+        border: "1px solid rgba(255,255,255,0.10)",
+        background: "linear-gradient(135deg, rgba(10,14,24,0.92), rgba(10,14,24,0.72))",
+        boxShadow: lowPower ? "0 12px 28px rgba(0,0,0,0.40)" : "0 22px 70px rgba(0,0,0,0.55)",
+        overflow: "hidden",
+        position: "relative",
+      },
+      headerStripe: {
+        position: "absolute",
+        inset: "0 0 auto 0",
+        height: 6,
+        background:
+          "linear-gradient(90deg, rgba(37,99,235,0.95), rgba(255,255,255,0.85), rgba(239,68,68,0.95), rgba(245,158,11,0.85))",
+        opacity: 0.85,
+      },
+      headerInner: { padding: "16px 16px 14px", position: "relative" },
 
-    badge: {
-      display: "inline-flex",
-      alignItems: "center",
-      gap: 8,
-      padding: "8px 10px",
-      borderRadius: 999,
-      border: "1px solid rgba(255,255,255,0.14)",
-      background: "rgba(255,255,255,0.06)",
-      fontSize: 12,
-      letterSpacing: 0.9,
-      textTransform: "uppercase",
-      fontWeight: 950,
-      color: "rgba(255,255,255,0.92)",
-    },
+      topRow: {
+        display: "flex",
+        gap: 14,
+        alignItems: "flex-start",
+        justifyContent: "space-between",
+        flexWrap: "wrap",
+      },
 
-    titleRow: { display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" },
-    h1: {
-      margin: "8px 0 2px",
-      fontSize: 30,
-      fontWeight: 1100,
-      letterSpacing: -0.6,
-      color: "rgba(255,255,255,0.96)",
-    },
-    scissors: {
-      fontSize: 22,
-      opacity: 0.95,
-      transform: "translateY(-1px)",
-      filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.30))",
-    },
-    sub: { margin: 0, opacity: 0.82, fontSize: 14, lineHeight: 1.35 },
+      badge: {
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "8px 10px",
+        borderRadius: 999,
+        border: "1px solid rgba(255,255,255,0.14)",
+        background: "rgba(255,255,255,0.06)",
+        fontSize: 12,
+        letterSpacing: 0.9,
+        textTransform: "uppercase",
+        fontWeight: 950,
+        color: "rgba(255,255,255,0.92)",
+      },
 
-    chipsRow: { marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" },
-    chip: {
-      display: "inline-flex",
-      alignItems: "center",
-      gap: 8,
-      padding: "9px 11px",
-      borderRadius: 999,
-      border: "1px solid rgba(255,255,255,0.12)",
-      background: "rgba(255,255,255,0.06)",
-      fontWeight: 950,
-      fontSize: 13,
-      color: "rgba(255,255,255,0.92)",
-      backdropFilter: "blur(8px)",
-    },
-    chipBtn: {
-      cursor: "pointer",
-      userSelect: "none",
-    },
+      titleRow: { display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" },
+      scissors: {
+        fontSize: 22,
+        opacity: 0.95,
+        transform: "translateY(-1px)",
+        filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.30))",
+      },
 
-    btnRow: { display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" },
-    btn: {
-      border: "1px solid rgba(255,255,255,0.14)",
-      background: "rgba(255,255,255,0.06)",
-      color: "rgba(255,255,255,0.92)",
-      padding: "10px 12px",
-      borderRadius: 14,
-      cursor: "pointer",
-      fontWeight: 950,
-      backdropFilter: "blur(8px)",
-    },
-    btnPrimary: {
-      border: "1px solid rgba(245,158,11,0.35)",
-      background: "linear-gradient(90deg, rgba(239,68,68,0.95), rgba(245,158,11,0.85))",
-      color: "rgba(10,14,24,0.98)",
-      padding: "10px 12px",
-      borderRadius: 14,
-      cursor: "pointer",
-      fontWeight: 1100,
-      boxShadow: "0 16px 40px rgba(239,68,68,0.18)",
-    },
-    btnDanger: {
-      border: "1px solid rgba(239,68,68,0.35)",
-      background: "rgba(239,68,68,0.10)",
-      color: "rgba(255,255,255,0.92)",
-      padding: "10px 12px",
-      borderRadius: 14,
-      cursor: "pointer",
-      fontWeight: 1100,
-    },
+      // ✅ titolo blu/rosso leggibile
+      h1: {
+        margin: "8px 0 2px",
+        fontSize: 30,
+        fontWeight: 1200,
+        letterSpacing: -0.6,
+        background: "linear-gradient(90deg, rgba(37,99,235,1), rgba(255,255,255,0.92), rgba(239,68,68,1))",
+        WebkitBackgroundClip: "text",
+        backgroundClip: "text",
+        color: "transparent",
+        textShadow: "0 2px 18px rgba(0,0,0,0.40)",
+      },
 
-    panel: {
-      marginTop: 12,
-      borderRadius: 20,
-      border: "1px solid rgba(255,255,255,0.10)",
-      background: "rgba(10,14,24,0.72)",
-      boxShadow: "0 22px 70px rgba(0,0,0,0.55)",
-      overflow: "hidden",
-      backdropFilter: "blur(10px)",
-    },
-    panelHeader: {
-      padding: "12px 14px",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 10,
-      borderBottom: "1px solid rgba(255,255,255,0.10)",
-      background:
-        "linear-gradient(90deg, rgba(255,255,255,0.06), rgba(37,99,235,0.10), rgba(239,68,68,0.08))",
-      flexWrap: "wrap",
-      color: "rgba(255,255,255,0.92)",
-    },
-    panelTitle: { fontWeight: 1100, letterSpacing: 0.2 },
-    body: { padding: 14 },
+      sub: { margin: 0, opacity: 0.82, fontSize: 14, lineHeight: 1.35 },
 
-    loginBox: {
-      maxWidth: 520,
-      margin: "10px auto 0",
-      padding: 14,
-      borderRadius: 18,
-      border: "1px solid rgba(255,255,255,0.12)",
-      background: "rgba(255,255,255,0.06)",
-      backdropFilter: "blur(10px)",
-    },
-    label: { fontWeight: 1000, opacity: 0.92, display: "block", marginBottom: 8 },
-    input: {
-      width: "100%",
-      padding: "12px 12px",
-      borderRadius: 14,
-      border: "1px solid rgba(255,255,255,0.14)",
-      background: "rgba(255,255,255,0.06)",
-      color: "rgba(255,255,255,0.92)",
-      outline: "none",
-      fontSize: 16, // evita zoom iOS
-      fontWeight: 900,
-    },
-    helperSmall: { marginTop: 8, opacity: 0.8, fontSize: 12, lineHeight: 1.3 },
-    error: {
-      marginTop: 10,
-      padding: "10px 12px",
-      borderRadius: 14,
-      border: "1px solid rgba(239,68,68,0.35)",
-      background: "rgba(239,68,68,0.12)",
-      color: "rgba(255,255,255,0.92)",
-      fontWeight: 950,
-      fontSize: 13,
-    },
-    ok: {
-      marginTop: 10,
-      padding: "10px 12px",
-      borderRadius: 14,
-      border: "1px solid rgba(34,197,94,0.30)",
-      background: "rgba(34,197,94,0.12)",
-      color: "rgba(255,255,255,0.92)",
-      fontWeight: 950,
-      fontSize: 13,
-    },
+      chipsRow: { marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" },
+      chip: {
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "9px 11px",
+        borderRadius: 999,
+        border: "1px solid rgba(255,255,255,0.12)",
+        background: "rgba(255,255,255,0.06)",
+        fontWeight: 950,
+        fontSize: 13,
+        color: "rgba(255,255,255,0.92)",
+        backdropFilter: lowPower ? undefined : "blur(8px)",
+      },
+      chipBtn: { cursor: "pointer", userSelect: "none" },
 
-    tools: {
-      display: "flex",
-      gap: 10,
-      flexWrap: "wrap",
-      alignItems: "flex-start",
-      justifyContent: "space-between",
-      marginBottom: 12,
-    },
+      btnRow: { display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" },
+      btn: {
+        border: "1px solid rgba(255,255,255,0.14)",
+        background: "rgba(255,255,255,0.06)",
+        color: "rgba(255,255,255,0.92)",
+        padding: "10px 12px",
+        borderRadius: 14,
+        cursor: "pointer",
+        fontWeight: 950,
+        backdropFilter: lowPower ? undefined : "blur(8px)",
+      },
+      btnPrimary: {
+        border: "1px solid rgba(245,158,11,0.35)",
+        background: "linear-gradient(90deg, rgba(239,68,68,0.95), rgba(245,158,11,0.85))",
+        color: "rgba(10,14,24,0.98)",
+        padding: "10px 12px",
+        borderRadius: 14,
+        cursor: "pointer",
+        fontWeight: 1100,
+        boxShadow: lowPower ? "0 10px 24px rgba(239,68,68,0.14)" : "0 16px 40px rgba(239,68,68,0.18)",
+      },
+      btnDanger: {
+        border: "1px solid rgba(239,68,68,0.35)",
+        background: "rgba(239,68,68,0.10)",
+        color: "rgba(255,255,255,0.92)",
+        padding: "10px 12px",
+        borderRadius: 14,
+        cursor: "pointer",
+        fontWeight: 1100,
+      },
 
-    pillRow: { display: "flex", gap: 8, flexWrap: "wrap" },
-    pill: {
-      padding: "9px 10px",
-      borderRadius: 999,
-      border: "1px solid rgba(255,255,255,0.14)",
-      background: "rgba(255,255,255,0.06)",
-      cursor: "pointer",
-      fontWeight: 1000,
-      fontSize: 12,
-      userSelect: "none",
-      color: "rgba(255,255,255,0.92)",
-      backdropFilter: "blur(8px)",
-    },
-    pillActive: {
-      background:
-        "linear-gradient(90deg, rgba(37,99,235,0.18), rgba(239,68,68,0.14), rgba(245,158,11,0.14))",
-      border: "1px solid rgba(255,255,255,0.18)",
-    },
+      panel: {
+        marginTop: 12,
+        borderRadius: 20,
+        border: "1px solid rgba(255,255,255,0.10)",
+        background: "rgba(10,14,24,0.72)",
+        boxShadow: lowPower ? "0 12px 28px rgba(0,0,0,0.42)" : "0 22px 70px rgba(0,0,0,0.55)",
+        overflow: "hidden",
+        backdropFilter: lowPower ? undefined : "blur(10px)",
+      },
+      panelHeader: {
+        padding: "12px 14px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 10,
+        borderBottom: "1px solid rgba(255,255,255,0.10)",
+        background:
+          "linear-gradient(90deg, rgba(255,255,255,0.06), rgba(37,99,235,0.10), rgba(239,68,68,0.08))",
+        flexWrap: "wrap",
+        color: "rgba(255,255,255,0.92)",
+      },
+      panelTitle: { fontWeight: 1100, letterSpacing: 0.2 },
+      body: { padding: 14 },
 
-    // ✅ box disponibilità
-    availBox: {
-      width: "100%",
-      borderRadius: 18,
-      border: "1px solid rgba(255,255,255,0.10)",
-      background: "rgba(255,255,255,0.05)",
-      padding: 12,
-      boxShadow: "0 18px 50px rgba(0,0,0,0.22)",
-    },
-    availTopRow: {
-      display: "flex",
-      gap: 10,
-      alignItems: "center",
-      justifyContent: "space-between",
-      flexWrap: "wrap",
-    },
-    availTitle: { fontWeight: 1100, letterSpacing: 0.2, display: "inline-flex", gap: 8, alignItems: "center" },
-    slotsWrap: { marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" },
-    slotChip: {
-      padding: "8px 10px",
-      borderRadius: 999,
-      border: "1px solid rgba(255,255,255,0.14)",
-      background: "rgba(255,255,255,0.06)",
-      fontWeight: 1000,
-      fontSize: 12,
-      color: "rgba(255,255,255,0.92)",
-      backdropFilter: "blur(8px)",
-    },
+      loginBox: {
+        maxWidth: 520,
+        margin: "10px auto 0",
+        padding: 14,
+        borderRadius: 18,
+        border: "1px solid rgba(255,255,255,0.12)",
+        background: "rgba(255,255,255,0.06)",
+        backdropFilter: lowPower ? undefined : "blur(10px)",
+      },
+      label: { fontWeight: 1000, opacity: 0.92, display: "block", marginBottom: 8 },
+      input: {
+        width: "100%",
+        padding: "12px 12px",
+        borderRadius: 14,
+        border: "1px solid rgba(255,255,255,0.14)",
+        background: "rgba(255,255,255,0.06)",
+        color: "rgba(255,255,255,0.92)",
+        outline: "none",
+        fontSize: 16,
+        fontWeight: 900,
+      },
+      helperSmall: { marginTop: 8, opacity: 0.8, fontSize: 12, lineHeight: 1.3 },
+      error: {
+        marginTop: 10,
+        padding: "10px 12px",
+        borderRadius: 14,
+        border: "1px solid rgba(239,68,68,0.35)",
+        background: "rgba(239,68,68,0.12)",
+        color: "rgba(255,255,255,0.92)",
+        fontWeight: 950,
+        fontSize: 13,
+      },
+      ok: {
+        marginTop: 10,
+        padding: "10px 12px",
+        borderRadius: 14,
+        border: "1px solid rgba(34,197,94,0.30)",
+        background: "rgba(34,197,94,0.12)",
+        color: "rgba(255,255,255,0.92)",
+        fontWeight: 950,
+        fontSize: 13,
+      },
 
-    list: { display: "grid", gap: 12 },
+      tools: {
+        display: "flex",
+        gap: 10,
+        flexWrap: "wrap",
+        alignItems: "flex-start",
+        justifyContent: "space-between",
+        marginBottom: 12,
+      },
 
-    card: {
-      borderRadius: 18,
-      background: "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.06))",
-      padding: 12,
-      position: "relative",
-      overflow: "hidden",
-      border: "1px solid rgba(255,255,255,0.10)",
-      boxShadow: "0 18px 50px rgba(0,0,0,0.30)",
-      backdropFilter: "blur(10px)",
-    },
+      pillRow: { display: "flex", gap: 8, flexWrap: "wrap" },
+      pill: {
+        padding: "9px 10px",
+        borderRadius: 999,
+        border: "1px solid rgba(255,255,255,0.14)",
+        background: "rgba(255,255,255,0.06)",
+        cursor: "pointer",
+        fontWeight: 1000,
+        fontSize: 12,
+        userSelect: "none",
+        color: "rgba(255,255,255,0.92)",
+        backdropFilter: lowPower ? undefined : "blur(8px)",
+      },
+      pillActive: {
+        background:
+          "linear-gradient(90deg, rgba(37,99,235,0.18), rgba(239,68,68,0.14), rgba(245,158,11,0.14))",
+        border: "1px solid rgba(255,255,255,0.18)",
+      },
 
-    cardTop: {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 10,
-      flexWrap: "wrap",
-      marginBottom: 10,
-      paddingLeft: 12,
-    },
-    rightStatus: {
-      display: "inline-flex",
-      alignItems: "center",
-      gap: 8,
-      padding: "7px 10px",
-      borderRadius: 999,
-      fontWeight: 1000,
-      fontSize: 12,
-    },
+      availBox: {
+        width: "100%",
+        borderRadius: 18,
+        border: "1px solid rgba(255,255,255,0.10)",
+        background: "rgba(255,255,255,0.05)",
+        padding: 12,
+        boxShadow: lowPower ? "0 10px 24px rgba(0,0,0,0.18)" : "0 18px 50px rgba(0,0,0,0.22)",
+      },
+      availTopRow: {
+        display: "flex",
+        gap: 10,
+        alignItems: "center",
+        justifyContent: "space-between",
+        flexWrap: "wrap",
+      },
+      availTitle: { fontWeight: 1100, letterSpacing: 0.2, display: "inline-flex", gap: 8, alignItems: "center" },
+      slotsWrap: { marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" },
+      slotChip: {
+        padding: "8px 10px",
+        borderRadius: 999,
+        border: "1px solid rgba(255,255,255,0.14)",
+        background: "rgba(255,255,255,0.06)",
+        fontWeight: 1000,
+        fontSize: 12,
+        color: "rgba(255,255,255,0.92)",
+        backdropFilter: lowPower ? undefined : "blur(8px)",
+      },
 
-    grid: {
-      display: "grid",
-      gap: 10,
-      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-      paddingLeft: 12,
-    },
-    box: {
-      borderRadius: 14,
-      border: "1px solid rgba(255,255,255,0.10)",
-      background: "rgba(255,255,255,0.06)",
-      padding: "10px 10px",
-    },
-    boxLabel: { fontSize: 11, fontWeight: 1000, opacity: 0.75, letterSpacing: 0.6 },
-    boxValue: { marginTop: 4, fontSize: 15, fontWeight: 1100, color: "rgba(255,255,255,0.92)" },
+      list: { display: "grid", gap: 12 },
 
-    actions: {
-      display: "flex",
-      gap: 8,
-      flexWrap: "wrap",
-      marginTop: 10,
-      paddingLeft: 12,
-      alignItems: "center",
-    },
-    miniBtn: {
-      padding: "9px 10px",
-      borderRadius: 14,
-      border: "1px solid rgba(255,255,255,0.12)",
-      background: "rgba(255,255,255,0.06)",
-      color: "rgba(255,255,255,0.92)",
-      cursor: "pointer",
-      fontWeight: 1000,
-      fontSize: 12,
-      display: "inline-flex",
-      alignItems: "center",
-      gap: 8,
-      textDecoration: "none",
-      backdropFilter: "blur(8px)",
-    },
-    miniGreen: { border: "1px solid rgba(34,197,94,0.30)", background: "rgba(34,197,94,0.12)" },
-    miniRed: { border: "1px solid rgba(239,68,68,0.30)", background: "rgba(239,68,68,0.12)" },
-    miniBlue: { border: "1px solid rgba(37,99,235,0.28)", background: "rgba(37,99,235,0.10)" },
+      card: {
+        borderRadius: 18,
+        background: "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.06))",
+        padding: 12,
+        position: "relative",
+        overflow: "hidden",
+        border: "1px solid rgba(255,255,255,0.10)",
+        boxShadow: lowPower ? "0 10px 24px rgba(0,0,0,0.22)" : "0 18px 50px rgba(0,0,0,0.30)",
+        backdropFilter: lowPower ? undefined : "blur(10px)",
+      },
 
-    footer: { marginTop: 14, opacity: 0.7, fontSize: 12, textAlign: "center" },
+      cardTop: {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 10,
+        flexWrap: "wrap",
+        marginBottom: 10,
+        paddingLeft: 12,
+      },
+      rightStatus: {
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "7px 10px",
+        borderRadius: 999,
+        fontWeight: 1000,
+        fontSize: 12,
+      },
 
-    toastWrap: {
-      position: "fixed",
-      top: 16,
-      left: 0,
-      right: 0,
-      display: "flex",
-      justifyContent: "center",
-      pointerEvents: "none",
-      zIndex: 60,
-      padding: "0 10px",
-    },
-  };
+      grid: {
+        display: "grid",
+        gap: 10,
+        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+        paddingLeft: 12,
+      },
+      box: {
+        borderRadius: 14,
+        border: "1px solid rgba(255,255,255,0.10)",
+        background: "rgba(255,255,255,0.06)",
+        padding: "10px 10px",
+      },
+      boxLabel: { fontSize: 11, fontWeight: 1000, opacity: 0.75, letterSpacing: 0.6 },
+      boxValue: { marginTop: 4, fontSize: 15, fontWeight: 1100, color: "rgba(255,255,255,0.92)" },
+
+      actions: {
+        display: "flex",
+        gap: 8,
+        flexWrap: "wrap",
+        marginTop: 10,
+        paddingLeft: 12,
+        alignItems: "center",
+      },
+      miniBtn: {
+        padding: "9px 10px",
+        borderRadius: 14,
+        border: "1px solid rgba(255,255,255,0.12)",
+        background: "rgba(255,255,255,0.06)",
+        color: "rgba(255,255,255,0.92)",
+        cursor: "pointer",
+        fontWeight: 1000,
+        fontSize: 12,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        textDecoration: "none",
+        backdropFilter: lowPower ? undefined : "blur(8px)",
+      },
+      miniGreen: { border: "1px solid rgba(34,197,94,0.30)", background: "rgba(34,197,94,0.12)" },
+      miniRed: { border: "1px solid rgba(239,68,68,0.30)", background: "rgba(239,68,68,0.12)" },
+      miniBlue: { border: "1px solid rgba(37,99,235,0.28)", background: "rgba(37,99,235,0.10)" },
+
+      footer: { marginTop: 14, opacity: 0.7, fontSize: 12, textAlign: "center" },
+
+      toastWrap: {
+        position: "fixed",
+        top: 16,
+        left: 0,
+        right: 0,
+        display: "flex",
+        justifyContent: "center",
+        pointerEvents: "none",
+        zIndex: 60,
+        padding: "0 10px",
+      },
+    };
+  }, [lowPower]);
 
   const soundChipStyle = (on: boolean): CSSProperties => ({
     ...styles.chip,
@@ -928,7 +958,7 @@ export default function PannelloAdmin() {
     <div style={styles.page}>
       {toast && (
         <div style={styles.toastWrap}>
-          <div style={toastStyle(toast.type)}>{toast.msg}</div>
+          <div style={toastStyle(toast.type, lowPower)}>{toast.msg}</div>
         </div>
       )}
 
@@ -955,11 +985,9 @@ export default function PannelloAdmin() {
                     <div style={styles.chip}>✅ Confermate: {counts.CONFERMATA}</div>
                     <div style={styles.chip}>❌ Annullate: {counts.ANNULLATA}</div>
 
-                    {/* ✅ SOLO AGGIUNTA: SUONO / VOCE */}
                     <div
                       style={soundChipStyle(soundOn)}
                       onClick={() => {
-                        // (tap = user gesture) utile per sbloccare audio su alcuni browser
                         if (!soundOn) {
                           try {
                             playBeepSafe();
@@ -1047,7 +1075,6 @@ export default function PannelloAdmin() {
               </div>
             ) : (
               <>
-                {/* ✅ DISPONIBILITÀ */}
                 <div style={{ marginBottom: 12 }}>
                   <div style={styles.availBox}>
                     <div style={styles.availTopRow}>
@@ -1134,11 +1161,18 @@ export default function PannelloAdmin() {
                 {rowsError && <div style={styles.error}>{rowsError}</div>}
                 {!rowsError && loadingRows && <div style={{ opacity: 0.8 }}>Carico prenotazioni…</div>}
 
-                {!loadingRows && !rowsError && filtered.length === 0 ? (
+                {/* ✅ se tablet e ci sono troppe prenotazioni */}
+                {!loadingRows && !rowsError && filtered.length > visible.length ? (
+                  <div style={styles.ok}>
+                    ⚠️ Modalità leggera attiva: mostro {visible.length} prenotazioni su {filtered.length}. Usa i filtri (Oggi / 7 giorni / Stato) per vedere le altre.
+                  </div>
+                ) : null}
+
+                {!loadingRows && !rowsError && visible.length === 0 ? (
                   <div style={styles.ok}>Nessuna prenotazione da mostrare.</div>
                 ) : (
                   <div style={styles.list}>
-                    {filtered.map((r, idx) => {
+                    {visible.map((r, idx) => {
                       const st = normStatus(r.stato);
                       const nome = (r.nome || "Cliente").toString();
                       const tel = r.telefono || "";
@@ -1150,13 +1184,34 @@ export default function PannelloAdmin() {
                       const waGeneric = tel ? waLink(tel, `Ciao ${nome}!`) : "#";
 
                       const accent = accentForIndex(idx);
+                      const isNuova = st === "NUOVA";
 
                       return (
-                        <div key={r.id} style={{ ...styles.card, ...accent.borderGlow }}>
+                        <div
+                          key={r.id}
+                          style={{
+                            ...styles.card,
+                            ...accent.borderGlow,
+                            border: `1px solid ${cardBorderColor(st)}`,
+                          }}
+                        >
                           <div style={accent.bar} />
 
                           <div style={styles.cardTop}>
-                            <span style={nameBadgeStyle()}>{nome}</span>
+                            <span
+                              style={{
+                                ...nameBadgeStyle(),
+                                ...(isNuova
+                                  ? {
+                                      color: "#b8860b",
+                                      textShadow: "0 1px 0 rgba(255,255,255,0.35), 0 2px 10px rgba(0,0,0,0.18)",
+                                    }
+                                  : {}),
+                              }}
+                            >
+                              {nome}
+                            </span>
+
                             <div style={{ ...styles.rightStatus, ...statusPillStyle(st) }}>{st}</div>
                           </div>
 

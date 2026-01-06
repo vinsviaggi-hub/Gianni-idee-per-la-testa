@@ -136,8 +136,14 @@ function nameBadgeStyle(): CSSProperties {
   };
 }
 
+/**
+ * ✅ Pill status:
+ * - NUOVA -> testo dorato + pill più “oro”
+ * - Confermata/Annullata come prima
+ */
 function statusPillStyle(st: BookingStatus): CSSProperties {
   const s = normStatus(st);
+
   if (s === "CONFERMATA") {
     return {
       background: "rgba(34,197,94,0.14)",
@@ -145,6 +151,7 @@ function statusPillStyle(st: BookingStatus): CSSProperties {
       color: "rgba(255,255,255,0.92)",
     };
   }
+
   if (s === "ANNULLATA") {
     return {
       background: "rgba(239,68,68,0.14)",
@@ -152,14 +159,17 @@ function statusPillStyle(st: BookingStatus): CSSProperties {
       color: "rgba(255,255,255,0.92)",
     };
   }
+
+  // NUOVA
   return {
-    background: "rgba(245,158,11,0.14)",
-    border: "1px solid rgba(245,158,11,0.35)",
-    color: "rgba(255,255,255,0.92)",
+    background: "rgba(245,158,11,0.18)",
+    border: "1px solid rgba(245,158,11,0.45)",
+    color: "#f6d36a", // ✅ dorato SOLO qui (la scritta “NUOVA”)
+    textShadow: "0 1px 0 rgba(0,0,0,0.55)",
   };
 }
 
-// ✅ bordo completo in base allo stato (NUOVA = dorato)
+// ✅ bordo completo in base allo stato (NUOVA = più oro)
 function cardBorderColor(st: BookingStatus) {
   const s = normStatus(st);
   if (s === "CONFERMATA") return "rgba(34,197,94,0.30)";
@@ -277,8 +287,11 @@ export default function PannelloAdmin() {
   const [soundOn, setSoundOn] = useState(true);
   const [voiceOn, setVoiceOn] = useState(false);
 
-  const seenIdsRef = useRef<Set<string>>(new Set());
-  const firstRowsLoadDoneRef = useRef(false);
+  // 🔥 evidenzia SOLO le card appena arrivate (expire timestamp)
+  const [highlightIds, setHighlightIds] = useState<Record<string, number>>({});
+
+  const prevIdsRef = useRef<Set<string>>(new Set());
+  const hasLoadedOnceRef = useRef(false);
 
   const [toast, setToast] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
   const showToast = (type: "ok" | "err", msg: string) => {
@@ -374,26 +387,38 @@ export default function PannelloAdmin() {
     }
   };
 
-  const maybeNotifyNewRows = (normalized: AdminRow[]) => {
-    if (!firstRowsLoadDoneRef.current) {
-      firstRowsLoadDoneRef.current = true;
-      seenIdsRef.current = new Set(normalized.map((x) => x.id));
-      return;
-    }
+  const markHighlights = (newRows: AdminRow[]) => {
+    const expire = Date.now() + 90_000; // 90s
+    setHighlightIds((prev) => {
+      const next = { ...prev };
+      newRows.forEach((r) => (next[r.id] = expire));
+      return next;
+    });
 
-    const seen = seenIdsRef.current;
-    const newOnes = normalized.filter((x) => !seen.has(x.id));
+    window.setTimeout(() => {
+      setHighlightIds((prev) => {
+        const now = Date.now();
+        const next: Record<string, number> = {};
+        for (const [id, ts] of Object.entries(prev)) {
+          if (ts > now) next[id] = ts;
+        }
+        return next;
+      });
+    }, 95_000);
+  };
 
-    normalized.forEach((x) => seen.add(x.id));
-
-    if (newOnes.length === 0) return;
+  const triggerAlertsForNew = (newRows: AdminRow[]) => {
+    if (newRows.length === 0) return;
     if (document.hidden) return;
 
     if (soundOn) playBeepSafe();
-    if (voiceOn) speakIt(buildVoiceText(newOnes));
+    if (voiceOn) speakIt(buildVoiceText(newRows));
+
+    showToast("ok", `🔔 Nuova prenotazione: ${newRows.length}`);
+    markHighlights(newRows);
   };
 
-  const loadRows = async () => {
+  const loadRows = async (opts?: { silent?: boolean }) => {
     setLoadingRows(true);
     setRowsError(null);
     try {
@@ -423,8 +448,23 @@ export default function PannelloAdmin() {
         }))
         .filter((x: AdminRow) => x.id);
 
+      const nowIds = new Set(normalized.map((r) => r.id));
+
+      // primo caricamento: NON suonare e NON brillare
+      if (!hasLoadedOnceRef.current) {
+        hasLoadedOnceRef.current = true;
+        prevIdsRef.current = nowIds;
+        setRows(normalized);
+        return;
+      }
+
+      const prev = prevIdsRef.current;
+      const newOnes = normalized.filter((r) => !prev.has(r.id));
+      prevIdsRef.current = nowIds;
+
       setRows(normalized);
-      maybeNotifyNewRows(normalized);
+
+      if (!opts?.silent) triggerAlertsForNew(newOnes);
     } catch {
       setRowsError("Errore rete nel caricamento prenotazioni.");
       setRows([]);
@@ -491,10 +531,12 @@ export default function PannelloAdmin() {
       setLoggedIn(true);
       showToast("ok", "Accesso effettuato.");
 
-      firstRowsLoadDoneRef.current = false;
-      seenIdsRef.current = new Set();
+      // reset “nuove card”
+      hasLoadedOnceRef.current = false;
+      prevIdsRef.current = new Set();
+      setHighlightIds({});
 
-      await loadRows();
+      await loadRows({ silent: true });
       await loadAvailability(availDate);
     } catch {
       setAuthError("Errore rete durante il login.");
@@ -509,6 +551,7 @@ export default function PannelloAdmin() {
     setRows([]);
     setAvailSlots([]);
     setAvailMsg("");
+    setHighlightIds({});
     showToast("ok", "Logout effettuato.");
   };
 
@@ -528,16 +571,16 @@ export default function PannelloAdmin() {
       const data: UpdateResponse = await safeJson(res);
       if (!(data as any)?.ok) {
         showToast("err", (data as any)?.error || "Aggiornamento stato fallito.");
-        await loadRows();
+        await loadRows({ silent: true });
         return;
       }
 
       showToast("ok", `Stato aggiornato: ${next}`);
-      await loadRows();
+      await loadRows({ silent: true });
       await loadAvailability(availDate);
     } catch {
       showToast("err", "Errore rete: stato non aggiornato.");
-      await loadRows();
+      await loadRows({ silent: true });
     }
   };
 
@@ -567,27 +610,29 @@ export default function PannelloAdmin() {
 
   useEffect(() => {
     if (loggedIn) {
-      firstRowsLoadDoneRef.current = false;
-      seenIdsRef.current = new Set();
+      // quando entri già loggato: primo load muto
+      hasLoadedOnceRef.current = false;
+      prevIdsRef.current = new Set();
+      setHighlightIds({});
 
-      void loadRows();
+      void loadRows({ silent: true });
       void loadAvailability(availDate);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedIn]);
 
-  // ✅ refresh un filo più “soft” (tablet ringrazia)
+  // ✅ refresh più soft
   useEffect(() => {
     if (!loggedIn) return;
 
     const id = window.setInterval(() => {
       if (document.hidden) return;
-      void loadRows();
+      void loadRows(); // qui suona + highlight SOLO se arrivano nuove
     }, 75_000);
 
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loggedIn]);
+  }, [loggedIn, soundOn, voiceOn]);
 
   useEffect(() => {
     if (!loggedIn) return;
@@ -595,7 +640,7 @@ export default function PannelloAdmin() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [availDate, loggedIn]);
 
-  // ✅ styles in useMemo (non ricreati ad ogni render)
+  // ✅ styles memo
   const styles = useMemo<Record<string, CSSProperties>>(() => {
     const pageBg = lowPower
       ? "linear-gradient(180deg, #070b12 0%, #0b1220 55%, #070b12 100%)"
@@ -663,7 +708,7 @@ export default function PannelloAdmin() {
         filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.30))",
       },
 
-      // ✅ titolo blu/rosso leggibile
+      // titolo blu/rosso
       h1: {
         margin: "8px 0 2px",
         fontSize: 30,
@@ -1025,7 +1070,7 @@ export default function PannelloAdmin() {
               <div style={styles.btnRow}>
                 {loggedIn ? (
                   <>
-                    <button style={styles.btnPrimary} onClick={loadRows} disabled={loadingRows}>
+                    <button style={styles.btnPrimary} onClick={() => loadRows()} disabled={loadingRows}>
                       {loadingRows ? "Aggiorno…" : "Aggiorna"}
                     </button>
                     <button style={styles.btnDanger} onClick={logout}>
@@ -1161,7 +1206,6 @@ export default function PannelloAdmin() {
                 {rowsError && <div style={styles.error}>{rowsError}</div>}
                 {!rowsError && loadingRows && <div style={{ opacity: 0.8 }}>Carico prenotazioni…</div>}
 
-                {/* ✅ se tablet e ci sono troppe prenotazioni */}
                 {!loadingRows && !rowsError && filtered.length > visible.length ? (
                   <div style={styles.ok}>
                     ⚠️ Modalità leggera attiva: mostro {visible.length} prenotazioni su {filtered.length}. Usa i filtri (Oggi / 7 giorni / Stato) per vedere le altre.
@@ -1184,7 +1228,18 @@ export default function PannelloAdmin() {
                       const waGeneric = tel ? waLink(tel, `Ciao ${nome}!`) : "#";
 
                       const accent = accentForIndex(idx);
-                      const isNuova = st === "NUOVA";
+
+                      // ✅ glow SOLO se è appena arrivata (non “tutte le NUOVA”)
+                      const isHighlighted = Boolean(highlightIds[r.id] && highlightIds[r.id] > Date.now());
+                      const glow = isHighlighted
+                        ? {
+                            outline: "3px solid rgba(245,158,11,0.55)",
+                            boxShadow: lowPower
+                              ? "0 0 0 6px rgba(245,158,11,0.10), 0 12px 28px rgba(0,0,0,0.30)"
+                              : "0 0 0 8px rgba(245,158,11,0.12), 0 18px 55px rgba(0,0,0,0.34)",
+                            transform: "translateY(-1px)",
+                          }
+                        : null;
 
                       return (
                         <div
@@ -1193,25 +1248,18 @@ export default function PannelloAdmin() {
                             ...styles.card,
                             ...accent.borderGlow,
                             border: `1px solid ${cardBorderColor(st)}`,
+                            ...(glow || {}),
+                            transition:
+                              "outline 220ms ease, box-shadow 220ms ease, transform 220ms ease, border-color 220ms ease",
                           }}
                         >
                           <div style={accent.bar} />
 
                           <div style={styles.cardTop}>
-                            <span
-                              style={{
-                                ...nameBadgeStyle(),
-                                ...(isNuova
-                                  ? {
-                                      color: "#b8860b",
-                                      textShadow: "0 1px 0 rgba(255,255,255,0.35), 0 2px 10px rgba(0,0,0,0.18)",
-                                    }
-                                  : {}),
-                              }}
-                            >
-                              {nome}
-                            </span>
+                            {/* ✅ Nome SEMPRE normale (non dorato) */}
+                            <span style={nameBadgeStyle()}>{nome}</span>
 
+                            {/* ✅ Dorato solo nella pill “NUOVA” (già gestito in statusPillStyle) */}
                             <div style={{ ...styles.rightStatus, ...statusPillStyle(st) }}>{st}</div>
                           </div>
 

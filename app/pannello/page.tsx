@@ -1,7 +1,7 @@
 // app/pannello/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState, type CSSProperties } from "react";
+import React, { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 type BookingStatus = "NUOVA" | "CONFERMATA" | "ANNULLATA" | string;
 
@@ -178,6 +178,53 @@ function accentForIndex(i: number) {
   return { bar, borderGlow };
 }
 
+/** ✅ Notifiche: beep + voce (solo se attivi) */
+function playBeepSafe() {
+  try {
+    const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = "sine";
+    o.frequency.value = 880;
+    g.gain.value = 0.12;
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.start();
+    window.setTimeout(() => {
+      try {
+        o.stop();
+        ctx.close?.();
+      } catch {}
+    }, 140);
+  } catch {}
+}
+
+function speakIt(text: string) {
+  try {
+    if (!("speechSynthesis" in window)) return;
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "it-IT";
+    u.rate = 0.9; // ✅ più lento
+    u.pitch = 1;
+    u.volume = 1;
+    window.speechSynthesis.cancel(); // evita sovrapposizioni
+    window.speechSynthesis.speak(u);
+  } catch {}
+}
+
+function buildVoiceText(newOnes: AdminRow[]) {
+  if (newOnes.length === 1) {
+    const r = newOnes[0];
+    const nome = (r.nome || "cliente").toString().trim();
+    const data = toITDate(r.dataISO);
+    const ora = r.ora || "";
+    return `Nuova prenotazione: ${nome}, ${data} alle ${ora}.`;
+  }
+  return `Arrivate ${newOnes.length} nuove prenotazioni.`;
+}
+
 export default function PannelloAdmin() {
   const [checking, setChecking] = useState(true);
   const [loggedIn, setLoggedIn] = useState(false);
@@ -200,11 +247,34 @@ export default function PannelloAdmin() {
   const [availSlots, setAvailSlots] = useState<string[]>([]);
   const [availMsg, setAvailMsg] = useState<string>("");
 
+  // ✅ Suono/Voce
+  const [soundOn, setSoundOn] = useState(true);
+  const [voiceOn, setVoiceOn] = useState(false);
+
+  const seenIdsRef = useRef<Set<string>>(new Set());
+  const firstRowsLoadDoneRef = useRef(false);
+
   const [toast, setToast] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
   const showToast = (type: "ok" | "err", msg: string) => {
     setToast({ type, msg });
     window.setTimeout(() => setToast(null), 2400);
   };
+
+  // ✅ carica/salva preferenze suono/voce
+  useEffect(() => {
+    try {
+      const s = window.localStorage.getItem("mm_admin_sound");
+      const v = window.localStorage.getItem("mm_admin_voice");
+      if (s !== null) setSoundOn(s === "1");
+      if (v !== null) setVoiceOn(v === "1");
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("mm_admin_sound", soundOn ? "1" : "0");
+      window.localStorage.setItem("mm_admin_voice", voiceOn ? "1" : "0");
+    } catch {}
+  }, [soundOn, voiceOn]);
 
   const counts = useMemo(() => {
     const c = { NUOVA: 0, CONFERMATA: 0, ANNULLATA: 0 };
@@ -273,6 +343,29 @@ export default function PannelloAdmin() {
     }
   };
 
+  const maybeNotifyNewRows = (normalized: AdminRow[]) => {
+    // prima load: non notificare
+    if (!firstRowsLoadDoneRef.current) {
+      firstRowsLoadDoneRef.current = true;
+      seenIdsRef.current = new Set(normalized.map((x) => x.id));
+      return;
+    }
+
+    const seen = seenIdsRef.current;
+    const newOnes = normalized.filter((x) => !seen.has(x.id));
+
+    // aggiorna set
+    normalized.forEach((x) => seen.add(x.id));
+
+    if (newOnes.length === 0) return;
+
+    // solo se pagina visibile (evita spam quando tab in background)
+    if (document.hidden) return;
+
+    if (soundOn) playBeepSafe();
+    if (voiceOn) speakIt(buildVoiceText(newOnes));
+  };
+
   const loadRows = async () => {
     setLoadingRows(true);
     setRowsError(null);
@@ -304,6 +397,7 @@ export default function PannelloAdmin() {
         .filter((x: AdminRow) => x.id);
 
       setRows(normalized);
+      maybeNotifyNewRows(normalized);
     } catch {
       setRowsError("Errore rete nel caricamento prenotazioni.");
       setRows([]);
@@ -369,6 +463,11 @@ export default function PannelloAdmin() {
       setPassword("");
       setLoggedIn(true);
       showToast("ok", "Accesso effettuato.");
+
+      // ✅ prima load dopo login: NON notificare
+      firstRowsLoadDoneRef.current = false;
+      seenIdsRef.current = new Set();
+
       await loadRows();
       await loadAvailability(availDate);
     } catch {
@@ -442,6 +541,10 @@ export default function PannelloAdmin() {
 
   useEffect(() => {
     if (loggedIn) {
+      // ✅ prima load quando già loggato: NON notificare
+      firstRowsLoadDoneRef.current = false;
+      seenIdsRef.current = new Set();
+
       void loadRows();
       void loadAvailability(availDate);
     }
@@ -555,6 +658,10 @@ export default function PannelloAdmin() {
       fontSize: 13,
       color: "rgba(255,255,255,0.92)",
       backdropFilter: "blur(8px)",
+    },
+    chipBtn: {
+      cursor: "pointer",
+      userSelect: "none",
     },
 
     btnRow: { display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" },
@@ -801,6 +908,22 @@ export default function PannelloAdmin() {
     },
   };
 
+  const soundChipStyle = (on: boolean): CSSProperties => ({
+    ...styles.chip,
+    ...styles.chipBtn,
+    border: on ? "1px solid rgba(34,197,94,0.30)" : "1px solid rgba(255,255,255,0.12)",
+    background: on ? "rgba(34,197,94,0.10)" : "rgba(255,255,255,0.06)",
+    opacity: on ? 1 : 0.75,
+  });
+
+  const voiceChipStyle = (on: boolean): CSSProperties => ({
+    ...styles.chip,
+    ...styles.chipBtn,
+    border: on ? "1px solid rgba(37,99,235,0.28)" : "1px solid rgba(255,255,255,0.12)",
+    background: on ? "rgba(37,99,235,0.10)" : "rgba(255,255,255,0.06)",
+    opacity: on ? 1 : 0.75,
+  });
+
   return (
     <div style={styles.page}>
       {toast && (
@@ -824,7 +947,6 @@ export default function PannelloAdmin() {
                   <h1 style={styles.h1}>Prenotazioni · Idee per la Testa</h1>
                 </div>
 
-                {/* ✅ tolta la frase lunga */}
                 <p style={styles.sub}>Pannello prenotazioni</p>
 
                 {loggedIn && (
@@ -832,6 +954,42 @@ export default function PannelloAdmin() {
                     <div style={styles.chip}>🟡 Nuove: {counts.NUOVA}</div>
                     <div style={styles.chip}>✅ Confermate: {counts.CONFERMATA}</div>
                     <div style={styles.chip}>❌ Annullate: {counts.ANNULLATA}</div>
+
+                    {/* ✅ SOLO AGGIUNTA: SUONO / VOCE */}
+                    <div
+                      style={soundChipStyle(soundOn)}
+                      onClick={() => {
+                        // (tap = user gesture) utile per sbloccare audio su alcuni browser
+                        if (!soundOn) {
+                          try {
+                            playBeepSafe();
+                          } catch {}
+                        }
+                        setSoundOn((v) => !v);
+                      }}
+                      role="button"
+                      aria-label="Toggle suono"
+                      title="Suono notifica nuove prenotazioni"
+                    >
+                      🔔 Suono: {soundOn ? "ON" : "OFF"}
+                    </div>
+
+                    <div
+                      style={voiceChipStyle(voiceOn)}
+                      onClick={() => {
+                        if (!voiceOn) {
+                          try {
+                            speakIt("Voce attivata.");
+                          } catch {}
+                        }
+                        setVoiceOn((v) => !v);
+                      }}
+                      role="button"
+                      aria-label="Toggle voce"
+                      title="Voce notifica nuove prenotazioni"
+                    >
+                      🗣️ Voce: {voiceOn ? "ON" : "OFF"}
+                    </div>
                   </div>
                 )}
               </div>
@@ -868,7 +1026,6 @@ export default function PannelloAdmin() {
             ) : !loggedIn ? (
               <div style={styles.loginBox}>
                 <form onSubmit={login}>
-                  {/* ✅ solo "Password" */}
                   <label style={styles.label}>Password</label>
                   <input
                     style={styles.input}
@@ -883,13 +1040,9 @@ export default function PannelloAdmin() {
                     <button type="submit" style={styles.btnPrimary}>
                       Entra
                     </button>
-
-                    {/* ✅ tolto "Rileva sessione" */}
                   </div>
 
                   {authError && <div style={styles.error}>{authError}</div>}
-
-                  {/* ✅ tolta la scritta "Se non entra..." */}
                 </form>
               </div>
             ) : (

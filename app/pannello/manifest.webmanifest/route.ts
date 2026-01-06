@@ -13,14 +13,21 @@ export function GET() {
     theme_color: "#0b1220",
     icons: [
       {
-        src: "/pannello/icons/icon-192.png",
+        src: "/pannello/icons/icon-192.png?v=2",
         sizes: "192x192",
         type: "image/png",
       },
       {
-        src: "/pannello/icons/icon-512.png",
+        src: "/pannello/icons/icon-512.png?v=2",
         sizes: "512x512",
         type: "image/png",
+      },
+      // opzionale: alcuni browser gradiscono "any"
+      {
+        src: "/pannello/icons/icon-512.png?v=2",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "any",
       },
     ],
   };

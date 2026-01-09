@@ -37,6 +37,8 @@ type AvailabilityOk = { ok: true; freeSlots: string[] };
 type AvailabilityErr = { ok: false; error?: string; details?: any };
 type AvailabilityResponse = AvailabilityOk | AvailabilityErr;
 
+type ViewMode = "AUTO" | "TABELLA" | "CARDS";
+
 function normStatus(s?: string): BookingStatus {
   const up = (s || "").toUpperCase().trim();
   if (up === "CONFERMATA" || up === "ANNULLATA" || up === "NUOVA") return up;
@@ -120,27 +122,6 @@ function buildCancelMsg(r: AdminRow) {
   return `Ciao${nome ? " " + nome : ""}. ❌ Il tuo appuntamento è ANNULLATO (${serv}) del ${data} alle ${ora}. Se vuoi riprenotare, scrivimi qui.`;
 }
 
-/** Badge nome “wow” (barbiere) */
-function nameBadgeStyle(): CSSProperties {
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    padding: "8px 12px",
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.18)",
-    background: "linear-gradient(135deg, rgba(37,99,235,0.92), rgba(239,68,68,0.82))",
-    color: "white",
-    fontWeight: 1000,
-    letterSpacing: 0.2,
-    boxShadow: "0 14px 30px rgba(0,0,0,0.30)",
-  };
-}
-
-/**
- * ✅ Pill status:
- * - NUOVA -> testo dorato + pill più “oro”
- * - Confermata/Annullata come prima
- */
 function statusPillStyle(st: BookingStatus): CSSProperties {
   const s = normStatus(st);
 
@@ -174,23 +155,6 @@ function cardBorderColor(st: BookingStatus) {
   if (s === "CONFERMATA") return "rgba(34,197,94,0.30)";
   if (s === "ANNULLATA") return "rgba(239,68,68,0.30)";
   return "rgba(245,158,11,0.45)";
-}
-
-function accentForIndex(i: number) {
-  const isBlue = i % 2 === 0;
-  const bar: CSSProperties = {
-    position: "absolute",
-    inset: "0 auto 0 0",
-    width: 10,
-    background: isBlue
-      ? "linear-gradient(180deg, rgba(37,99,235,0.85), rgba(37,99,235,0.18))"
-      : "linear-gradient(180deg, rgba(239,68,68,0.85), rgba(239,68,68,0.18))",
-  };
-  const borderGlow: CSSProperties = {
-    border: "1px solid rgba(255,255,255,0.10)",
-    boxShadow: isBlue ? "0 10px 26px rgba(37,99,235,0.08)" : "0 10px 26px rgba(239,68,68,0.06)",
-  };
-  return { bar, borderGlow };
 }
 
 function playBeepSafe() {
@@ -294,20 +258,45 @@ export default function PannelloAdmin() {
     window.setTimeout(() => setToast(null), 2400);
   };
 
+  // ✅ Vista: Tabella stile “Sheets” su PC/Tablet, compatta su telefono
+  const [viewMode, setViewMode] = useState<ViewMode>("AUTO");
+  const [isPhone, setIsPhone] = useState(false);
+  useEffect(() => {
+    const calc = () => {
+      const w = window.innerWidth || 0;
+      setIsPhone(w < 760);
+    };
+    calc();
+    window.addEventListener("resize", calc);
+    return () => window.removeEventListener("resize", calc);
+  }, []);
+
+  const effectiveView: "TABELLA" | "CARDS" = useMemo(() => {
+    if (viewMode === "TABELLA") return "TABELLA";
+    if (viewMode === "CARDS") return "CARDS";
+    // AUTO
+    return isPhone ? "CARDS" : "TABELLA";
+  }, [viewMode, isPhone]);
+
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
   useEffect(() => {
     try {
       const s = window.localStorage.getItem("mm_admin_sound");
       const v = window.localStorage.getItem("mm_admin_voice");
+      const m = window.localStorage.getItem("mm_admin_viewmode");
       if (s !== null) setSoundOn(s === "1");
       if (v !== null) setVoiceOn(v === "1");
+      if (m === "AUTO" || m === "TABELLA" || m === "CARDS") setViewMode(m);
     } catch {}
   }, []);
   useEffect(() => {
     try {
       window.localStorage.setItem("mm_admin_sound", soundOn ? "1" : "0");
       window.localStorage.setItem("mm_admin_voice", voiceOn ? "1" : "0");
+      window.localStorage.setItem("mm_admin_viewmode", viewMode);
     } catch {}
-  }, [soundOn, voiceOn]);
+  }, [soundOn, voiceOn, viewMode]);
 
   const counts = useMemo(() => {
     const c = { NUOVA: 0, CONFERMATA: 0, ANNULLATA: 0 };
@@ -527,6 +516,7 @@ export default function PannelloAdmin() {
       hasLoadedOnceRef.current = false;
       prevIdsRef.current = new Set();
       setHighlightIds({});
+      setExpandedId(null);
 
       await loadRows({ silent: true });
       await loadAvailability(availDate);
@@ -544,6 +534,7 @@ export default function PannelloAdmin() {
     setAvailSlots([]);
     setAvailMsg("");
     setHighlightIds({});
+    setExpandedId(null);
     showToast("ok", "Logout effettuato.");
   };
 
@@ -576,7 +567,6 @@ export default function PannelloAdmin() {
     }
   };
 
-  // ✅ WhatsApp URL helper
   function getWhatsAppUrl(phone: string, message: string) {
     const p = safeTel(phone);
     if (!p) {
@@ -586,7 +576,6 @@ export default function PannelloAdmin() {
     return waLink(p, message);
   }
 
-  // ✅ FIX: standalone -> location.href, normale -> window.open, fallback se popup bloccato
   function openWhatsAppUrl(url: string) {
     const isStandalone =
       (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
@@ -601,23 +590,16 @@ export default function PannelloAdmin() {
     if (!w) window.location.href = url;
   }
 
-  // ✅ IMPORTANTISSIMO: apri WhatsApp SUBITO, poi aggiorna stato in background
   const confirmWhatsApp = (r: AdminRow) => {
     const url = getWhatsAppUrl(r.telefono || "", buildConfirmMsg(r));
     if (url) openWhatsAppUrl(url);
-
-    window.setTimeout(() => {
-      void setStatus(r.id, "CONFERMATA");
-    }, 0);
+    window.setTimeout(() => void setStatus(r.id, "CONFERMATA"), 0);
   };
 
   const cancelWhatsApp = (r: AdminRow) => {
     const url = getWhatsAppUrl(r.telefono || "", buildCancelMsg(r));
     if (url) openWhatsAppUrl(url);
-
-    window.setTimeout(() => {
-      void setStatus(r.id, "ANNULLATA");
-    }, 0);
+    window.setTimeout(() => void setStatus(r.id, "ANNULLATA"), 0);
   };
 
   useEffect(() => {
@@ -630,6 +612,7 @@ export default function PannelloAdmin() {
       hasLoadedOnceRef.current = false;
       prevIdsRef.current = new Set();
       setHighlightIds({});
+      setExpandedId(null);
 
       void loadRows({ silent: true });
       void loadAvailability(availDate);
@@ -906,8 +889,127 @@ export default function PannelloAdmin() {
         backdropFilter: lowPower ? undefined : "blur(8px)",
       },
 
-      list: { display: "grid", gap: 12 },
+      // ✅ TABELLONE (Sheets style)
+      tableWrap: {
+        borderRadius: 18,
+        border: "1px solid rgba(255,255,255,0.10)",
+        background: "rgba(255,255,255,0.05)",
+        overflow: "hidden",
+      },
+      tableScroll: {
+        overflowX: "auto",
+        WebkitOverflowScrolling: "touch",
+      },
+      table: {
+        width: "100%",
+        borderCollapse: "separate",
+        borderSpacing: 0,
+        minWidth: 920,
+        fontSize: 13,
+      },
+      th: {
+        position: "sticky",
+        top: 0,
+        zIndex: 2,
+        textAlign: "left",
+        padding: "12px 10px",
+        fontSize: 11,
+        letterSpacing: 0.8,
+        textTransform: "uppercase",
+        fontWeight: 1100,
+        color: "rgba(255,255,255,0.86)",
+        background: "rgba(10,14,24,0.92)",
+        borderBottom: "1px solid rgba(255,255,255,0.10)",
+        whiteSpace: "nowrap",
+      },
+      td: {
+        padding: "10px 10px",
+        borderBottom: "1px solid rgba(255,255,255,0.08)",
+        verticalAlign: "middle",
+        color: "rgba(255,255,255,0.92)",
+        whiteSpace: "nowrap",
+      },
+      tdWrap: {
+        whiteSpace: "normal",
+      },
+      row: {
+        background: "rgba(255,255,255,0.02)",
+      },
+      rowAlt: {
+        background: "rgba(255,255,255,0.035)",
+      },
+      rowHover: {
+        cursor: "pointer",
+      },
+      rowNewGlow: {
+        outline: "3px solid rgba(245,158,11,0.55)",
+        boxShadow: lowPower
+          ? "0 0 0 6px rgba(245,158,11,0.10), 0 12px 28px rgba(0,0,0,0.30)"
+          : "0 0 0 8px rgba(245,158,11,0.12), 0 18px 55px rgba(0,0,0,0.34)",
+      },
 
+      nameCell: {
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        minWidth: 220,
+      },
+      dot: {
+        width: 10,
+        height: 10,
+        borderRadius: 999,
+        background: "rgba(245,158,11,0.9)",
+        boxShadow: "0 0 0 6px rgba(245,158,11,0.10)",
+        flex: "0 0 auto",
+      },
+      nameText: {
+        fontWeight: 1100,
+        fontSize: 14,
+        lineHeight: 1.15,
+      },
+      subText: {
+        fontSize: 12,
+        opacity: 0.78,
+        marginTop: 2,
+      },
+
+      pillStatus: {
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        padding: "7px 10px",
+        borderRadius: 999,
+        fontWeight: 1100,
+        fontSize: 12,
+      },
+
+      actionsInline: {
+        display: "flex",
+        gap: 8,
+        justifyContent: "flex-end",
+        flexWrap: "nowrap",
+      },
+      aBtn: {
+        borderRadius: 12,
+        padding: "8px 10px",
+        border: "1px solid rgba(255,255,255,0.12)",
+        background: "rgba(255,255,255,0.06)",
+        color: "rgba(255,255,255,0.92)",
+        fontWeight: 1000,
+        cursor: "pointer",
+        textDecoration: "none",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        fontSize: 12,
+      },
+      aBlue: { border: "1px solid rgba(37,99,235,0.28)", background: "rgba(37,99,235,0.10)" },
+      aGreen: { border: "1px solid rgba(34,197,94,0.30)", background: "rgba(34,197,94,0.12)" },
+      aRed: { border: "1px solid rgba(239,68,68,0.30)", background: "rgba(239,68,68,0.12)" },
+
+      // ✅ CARDS (mobile)
+      list: { display: "grid", gap: 10 },
       card: {
         borderRadius: 18,
         background: "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.06))",
@@ -918,31 +1020,31 @@ export default function PannelloAdmin() {
         boxShadow: lowPower ? "0 10px 24px rgba(0,0,0,0.22)" : "0 18px 50px rgba(0,0,0,0.30)",
         backdropFilter: lowPower ? undefined : "blur(10px)",
       },
-
       cardTop: {
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
         gap: 10,
         flexWrap: "wrap",
-        marginBottom: 10,
-        paddingLeft: 12,
+        marginBottom: 8,
       },
-      rightStatus: {
+      namePill: {
         display: "inline-flex",
         alignItems: "center",
-        gap: 8,
-        padding: "7px 10px",
+        gap: 10,
+        padding: "8px 12px",
         borderRadius: 999,
+        border: "1px solid rgba(255,255,255,0.18)",
+        background: "linear-gradient(135deg, rgba(37,99,235,0.92), rgba(239,68,68,0.82))",
+        color: "white",
         fontWeight: 1000,
-        fontSize: 12,
+        letterSpacing: 0.2,
+        boxShadow: "0 14px 30px rgba(0,0,0,0.30)",
       },
-
       grid: {
         display: "grid",
         gap: 10,
         gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-        paddingLeft: 12,
       },
       box: {
         borderRadius: 14,
@@ -950,7 +1052,7 @@ export default function PannelloAdmin() {
         background: "rgba(255,255,255,0.06)",
         padding: "10px 10px",
       },
-      boxLabel: { fontSize: 11, fontWeight: 1000, opacity: 0.75, letterSpacing: 0.6 },
+      boxLabel: { fontSize: 11, fontWeight: 1100, opacity: 0.75, letterSpacing: 0.6 },
       boxValue: { marginTop: 4, fontSize: 15, fontWeight: 1100, color: "rgba(255,255,255,0.92)" },
 
       actions: {
@@ -958,27 +1060,8 @@ export default function PannelloAdmin() {
         gap: 8,
         flexWrap: "wrap",
         marginTop: 10,
-        paddingLeft: 12,
         alignItems: "center",
       },
-      miniBtn: {
-        padding: "9px 10px",
-        borderRadius: 14,
-        border: "1px solid rgba(255,255,255,0.12)",
-        background: "rgba(255,255,255,0.06)",
-        color: "rgba(255,255,255,0.92)",
-        cursor: "pointer",
-        fontWeight: 1000,
-        fontSize: 12,
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 8,
-        textDecoration: "none",
-        backdropFilter: lowPower ? undefined : "blur(8px)",
-      },
-      miniGreen: { border: "1px solid rgba(34,197,94,0.30)", background: "rgba(34,197,94,0.12)" },
-      miniRed: { border: "1px solid rgba(239,68,68,0.30)", background: "rgba(239,68,68,0.12)" },
-      miniBlue: { border: "1px solid rgba(37,99,235,0.28)", background: "rgba(37,99,235,0.10)" },
 
       footer: { marginTop: 14, opacity: 0.7, fontSize: 12, textAlign: "center" },
 
@@ -1011,6 +1094,271 @@ export default function PannelloAdmin() {
     background: on ? "rgba(37,99,235,0.10)" : "rgba(255,255,255,0.06)",
     opacity: on ? 1 : 0.75,
   });
+
+  const viewChipStyle = (active: boolean): CSSProperties => ({
+    ...styles.chip,
+    ...styles.chipBtn,
+    border: active ? "1px solid rgba(245,158,11,0.35)" : "1px solid rgba(255,255,255,0.12)",
+    background: active ? "rgba(245,158,11,0.10)" : "rgba(255,255,255,0.06)",
+    opacity: active ? 1 : 0.8,
+  });
+
+  const renderCards = () => {
+    return (
+      <div style={styles.list}>
+        {visible.map((r) => {
+          const st = normStatus(r.stato);
+          const nome = (r.nome || "Cliente").toString();
+          const tel = r.telefono || "";
+          const dateIT = toITDate(r.dataISO);
+          const ora = r.ora || "—";
+          const serv = (r.servizio || "—").toString();
+
+          const callHref = tel ? `tel:${safeTel(tel)}` : "#";
+          const waGeneric = tel ? waLink(tel, `Ciao ${nome}!`) : "#";
+
+          const isHighlighted = Boolean(highlightIds[r.id] && highlightIds[r.id] > Date.now());
+          const glow = isHighlighted
+            ? {
+                outline: "3px solid rgba(245,158,11,0.55)",
+                boxShadow: lowPower
+                  ? "0 0 0 6px rgba(245,158,11,0.10), 0 12px 28px rgba(0,0,0,0.30)"
+                  : "0 0 0 8px rgba(245,158,11,0.12), 0 18px 55px rgba(0,0,0,0.34)",
+              }
+            : null;
+
+          return (
+            <div
+              key={r.id}
+              style={{
+                ...styles.card,
+                border: `1px solid ${cardBorderColor(st)}`,
+                ...(glow || {}),
+                transition: "outline 220ms ease, box-shadow 220ms ease, border-color 220ms ease",
+              }}
+            >
+              <div style={styles.cardTop}>
+                <span style={styles.namePill}>{nome}</span>
+                <div style={{ ...styles.pillStatus, ...statusPillStyle(st) }}>{st}</div>
+              </div>
+
+              <div className="mm-grid" style={styles.grid}>
+                <div style={styles.box}>
+                  <div style={styles.boxLabel}>DATA</div>
+                  <div style={styles.boxValue}>{dateIT}</div>
+                </div>
+                <div style={styles.box}>
+                  <div style={styles.boxLabel}>ORA</div>
+                  <div style={styles.boxValue}>{ora}</div>
+                </div>
+                <div style={styles.box}>
+                  <div style={styles.boxLabel}>SERVIZIO</div>
+                  <div style={styles.boxValue}>{serv}</div>
+                </div>
+                <div style={styles.box}>
+                  <div style={styles.boxLabel}>TELEFONO</div>
+                  <div style={styles.boxValue}>{tel || "—"}</div>
+                </div>
+              </div>
+
+              {r.note ? (
+                <div style={{ ...styles.box, marginTop: 10 }}>
+                  <div style={styles.boxLabel}>NOTE</div>
+                  <div style={{ ...styles.boxValue, fontWeight: 900, whiteSpace: "pre-wrap" }}>{r.note}</div>
+                </div>
+              ) : null}
+
+              <div style={styles.actions}>
+                <a
+                  style={{ ...styles.aBtn, ...styles.aBlue, opacity: tel ? 1 : 0.5, pointerEvents: tel ? "auto" : "none" }}
+                  href={callHref}
+                  title="Chiama"
+                >
+                  📞 Chiama
+                </a>
+
+                <a
+                  style={{ ...styles.aBtn, ...styles.aBlue, opacity: tel ? 1 : 0.5, pointerEvents: tel ? "auto" : "none" }}
+                  href={waGeneric}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="Apri WhatsApp"
+                >
+                  💬 WhatsApp
+                </a>
+
+                <button style={{ ...styles.aBtn, ...styles.aGreen }} onClick={() => confirmWhatsApp(r)}>
+                  ✅ Conferma
+                </button>
+
+                <button style={{ ...styles.aBtn, ...styles.aRed }} onClick={() => cancelWhatsApp(r)}>
+                  ❌ Annulla
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderTable = () => {
+    return (
+      <div style={styles.tableWrap}>
+        <div style={styles.tableScroll}>
+          <table style={styles.table} className="mm-table">
+            <thead>
+              <tr>
+                <th style={{ ...styles.th, width: 320 }}>Cliente</th>
+                <th style={{ ...styles.th, width: 120 }}>Data</th>
+                <th style={{ ...styles.th, width: 90 }}>Ora</th>
+                <th style={{ ...styles.th, width: 220 }} className="col-servizio">
+                  Servizio
+                </th>
+                <th style={{ ...styles.th, width: 160 }} className="col-telefono">
+                  Telefono
+                </th>
+                <th style={{ ...styles.th, width: 150 }}>Stato</th>
+                <th style={{ ...styles.th, width: 380, textAlign: "right" }}>Azioni</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {visible.map((r, idx) => {
+                const st = normStatus(r.stato);
+                const nome = (r.nome || "Cliente").toString();
+                const tel = r.telefono || "";
+                const dateIT = toITDate(r.dataISO);
+                const ora = r.ora || "—";
+                const serv = (r.servizio || "—").toString();
+
+                const isHighlighted = Boolean(highlightIds[r.id] && highlightIds[r.id] > Date.now());
+                const isExpanded = expandedId === r.id;
+
+                const callHref = tel ? `tel:${safeTel(tel)}` : "#";
+                const waGeneric = tel ? waLink(tel, `Ciao ${nome}!`) : "#";
+
+                const baseRow = idx % 2 === 0 ? styles.row : styles.rowAlt;
+
+                return (
+                  <React.Fragment key={r.id}>
+                    <tr
+                      className={`mm-tr ${isHighlighted ? "mm-new" : ""}`}
+                      style={{
+                        ...baseRow,
+                        ...(styles.rowHover as any),
+                        ...(isHighlighted ? styles.rowNewGlow : null),
+                      }}
+                      onClick={() => setExpandedId((v) => (v === r.id ? null : r.id))}
+                      title="Tocca per vedere note/dettagli"
+                    >
+                      <td style={{ ...styles.td, ...styles.tdWrap }}>
+                        <div style={styles.nameCell}>
+                          {st === "NUOVA" ? <span style={styles.dot} /> : <span style={{ ...styles.dot, opacity: 0.22 }} />}
+                          <div>
+                            <div style={styles.nameText}>{nome}</div>
+                            <div style={styles.subText}>ID: {String(r.rowNumber ?? "").trim() || "—"}</div>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td style={styles.td}>{dateIT}</td>
+                      <td style={styles.td}>{ora}</td>
+
+                      <td style={{ ...styles.td, ...styles.tdWrap }} className="col-servizio">
+                        {serv}
+                      </td>
+
+                      <td style={styles.td} className="col-telefono">
+                        {tel || "—"}
+                      </td>
+
+                      <td style={styles.td}>
+                        <span style={{ ...styles.pillStatus, ...statusPillStyle(st) }}>{st}</span>
+                      </td>
+
+                      <td style={{ ...styles.td, textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
+                        <div style={styles.actionsInline}>
+                          <a
+                            style={{
+                              ...styles.aBtn,
+                              ...styles.aBlue,
+                              opacity: tel ? 1 : 0.5,
+                              pointerEvents: tel ? "auto" : "none",
+                            }}
+                            href={callHref}
+                            title="Chiama"
+                          >
+                            📞
+                          </a>
+
+                          <a
+                            style={{
+                              ...styles.aBtn,
+                              ...styles.aBlue,
+                              opacity: tel ? 1 : 0.5,
+                              pointerEvents: tel ? "auto" : "none",
+                            }}
+                            href={waGeneric}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="WhatsApp"
+                          >
+                            💬
+                          </a>
+
+                          <button style={{ ...styles.aBtn, ...styles.aGreen }} onClick={() => confirmWhatsApp(r)} title="Conferma + WhatsApp">
+                            ✅ Conferma
+                          </button>
+
+                          <button style={{ ...styles.aBtn, ...styles.aRed }} onClick={() => cancelWhatsApp(r)} title="Annulla + WhatsApp">
+                            ❌ Annulla
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+
+                    {isExpanded ? (
+                      <tr className="mm-expand">
+                        <td colSpan={7} style={{ ...styles.td, whiteSpace: "normal", padding: "12px 12px" }}>
+                          <div
+                            style={{
+                              border: "1px solid rgba(255,255,255,0.10)",
+                              background: "rgba(0,0,0,0.18)",
+                              borderRadius: 14,
+                              padding: 12,
+                            }}
+                          >
+                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
+                              <div style={{ fontWeight: 1100, opacity: 0.9 }}>Dettagli</div>
+                              <div style={{ opacity: 0.78, fontSize: 12 }}>
+                                Canale: <b>{(r.canale || "—").toString()}</b> · Timestamp: <b>{(r.timestamp || "—").toString()}</b>
+                              </div>
+                            </div>
+
+                            {r.note ? (
+                              <div style={{ marginTop: 10, opacity: 0.92, lineHeight: 1.35 }}>
+                                <div style={{ fontSize: 11, letterSpacing: 0.8, textTransform: "uppercase", fontWeight: 1100, opacity: 0.75 }}>
+                                  Note
+                                </div>
+                                <div style={{ marginTop: 6, fontWeight: 900, whiteSpace: "pre-wrap" }}>{r.note}</div>
+                              </div>
+                            ) : (
+                              <div style={{ marginTop: 10, opacity: 0.75 }}>Nessuna nota.</div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div style={styles.page}>
@@ -1075,6 +1423,16 @@ export default function PannelloAdmin() {
                       title="Voce notifica nuove prenotazioni"
                     >
                       🗣️ Voce: {voiceOn ? "ON" : "OFF"}
+                    </div>
+
+                    <div style={viewChipStyle(viewMode === "AUTO")} onClick={() => setViewMode("AUTO")} role="button" title="Auto (tabella su PC/tablet, card su telefono)">
+                      👁️ Vista: Auto
+                    </div>
+                    <div style={viewChipStyle(viewMode === "TABELLA")} onClick={() => setViewMode("TABELLA")} role="button" title="Sempre Tabella (stile Sheets)">
+                      📋 Tabella
+                    </div>
+                    <div style={viewChipStyle(viewMode === "CARDS")} onClick={() => setViewMode("CARDS")} role="button" title="Sempre Card (più grandi)">
+                      🧾 Card
                     </div>
                   </div>
                 )}
@@ -1227,123 +1585,11 @@ export default function PannelloAdmin() {
                 {!loadingRows && !rowsError && visible.length === 0 ? (
                   <div style={styles.ok}>Nessuna prenotazione da mostrare.</div>
                 ) : (
-                  <div style={styles.list}>
-                    {visible.map((r, idx) => {
-                      const st = normStatus(r.stato);
-                      const nome = (r.nome || "Cliente").toString();
-                      const tel = r.telefono || "";
-                      const dateIT = toITDate(r.dataISO);
-                      const ora = r.ora || "—";
-                      const serv = (r.servizio || "—").toString();
-
-                      const callHref = tel ? `tel:${safeTel(tel)}` : "#";
-                      const waGeneric = tel ? waLink(tel, `Ciao ${nome}!`) : "#";
-
-                      const accent = accentForIndex(idx);
-
-                      const isHighlighted = Boolean(highlightIds[r.id] && highlightIds[r.id] > Date.now());
-                      const glow = isHighlighted
-                        ? {
-                            outline: "3px solid rgba(245,158,11,0.55)",
-                            boxShadow: lowPower
-                              ? "0 0 0 6px rgba(245,158,11,0.10), 0 12px 28px rgba(0,0,0,0.30)"
-                              : "0 0 0 8px rgba(245,158,11,0.12), 0 18px 55px rgba(0,0,0,0.34)",
-                            transform: "translateY(-1px)",
-                          }
-                        : null;
-
-                      return (
-                        <div
-                          key={r.id}
-                          style={{
-                            ...styles.card,
-                            ...accent.borderGlow,
-                            border: `1px solid ${cardBorderColor(st)}`,
-                            ...(glow || {}),
-                            transition:
-                              "outline 220ms ease, box-shadow 220ms ease, transform 220ms ease, border-color 220ms ease",
-                          }}
-                        >
-                          <div style={accent.bar} />
-
-                          <div style={styles.cardTop}>
-                            <span style={nameBadgeStyle()}>{nome}</span>
-                            <div style={{ ...styles.rightStatus, ...statusPillStyle(st) }}>{st}</div>
-                          </div>
-
-                          <div className="mm-grid" style={styles.grid}>
-                            <div style={styles.box}>
-                              <div style={styles.boxLabel}>TELEFONO</div>
-                              <div style={styles.boxValue}>{tel || "—"}</div>
-                            </div>
-
-                            <div style={styles.box}>
-                              <div style={styles.boxLabel}>SERVIZIO</div>
-                              <div style={styles.boxValue}>{serv}</div>
-                            </div>
-
-                            <div style={styles.box}>
-                              <div style={styles.boxLabel}>DATA</div>
-                              <div style={styles.boxValue}>{dateIT}</div>
-                            </div>
-
-                            <div style={styles.box}>
-                              <div style={styles.boxLabel}>ORA</div>
-                              <div style={styles.boxValue}>{ora}</div>
-                            </div>
-                          </div>
-
-                          {r.note ? (
-                            <div style={{ ...styles.box, marginTop: 10, marginLeft: 12 }}>
-                              <div style={styles.boxLabel}>NOTE</div>
-                              <div style={{ ...styles.boxValue, fontWeight: 900, whiteSpace: "pre-wrap" }}>{r.note}</div>
-                            </div>
-                          ) : null}
-
-                          <div style={styles.actions}>
-                            <a
-                              style={{
-                                ...styles.miniBtn,
-                                ...styles.miniBlue,
-                                opacity: tel ? 1 : 0.5,
-                                pointerEvents: tel ? "auto" : "none",
-                              }}
-                              href={callHref}
-                              title="Chiama"
-                            >
-                              📞 Chiama
-                            </a>
-
-                            <a
-                              style={{
-                                ...styles.miniBtn,
-                                ...styles.miniBlue,
-                                opacity: tel ? 1 : 0.5,
-                                pointerEvents: tel ? "auto" : "none",
-                              }}
-                              href={waGeneric}
-                              target="_blank"
-                              rel="noreferrer"
-                              title="Apri WhatsApp"
-                            >
-                              💬 WhatsApp
-                            </a>
-
-                            <button style={{ ...styles.miniBtn, ...styles.miniGreen }} onClick={() => confirmWhatsApp(r)}>
-                              ✅ Conferma (WhatsApp)
-                            </button>
-
-                            <button style={{ ...styles.miniBtn, ...styles.miniRed }} onClick={() => cancelWhatsApp(r)}>
-                              ❌ Annulla (WhatsApp)
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <>
+                    {effectiveView === "TABELLA" ? renderTable() : renderCards()}
+                    <div style={styles.footer}>GalaxBot AI • Pannello prenotazioni</div>
+                  </>
                 )}
-
-                <div style={styles.footer}>GalaxBot AI • Pannello prenotazioni</div>
               </>
             )}
           </div>
@@ -1353,6 +1599,22 @@ export default function PannelloAdmin() {
       <style>{`
         @media (max-width: 760px) {
           .mm-grid { grid-template-columns: 1fr !important; }
+        }
+
+        /* ✅ Tablet: nascondi colonne meno importanti per leggibilità */
+        @media (max-width: 980px) {
+          .mm-table .col-telefono { display: none; }
+          .mm-table .col-servizio { display: none; }
+        }
+
+        /* ✅ Righe: effetto “sheet” più pulito */
+        .mm-table .mm-tr:hover td {
+          background: rgba(255,255,255,0.04);
+        }
+
+        /* ✅ Nuove: bordo oro visibile anche in tabella */
+        .mm-table .mm-new td {
+          box-shadow: inset 0 0 0 9999px rgba(245,158,11,0.045);
         }
       `}</style>
     </div>

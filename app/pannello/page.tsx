@@ -584,23 +584,38 @@ export default function PannelloAdmin() {
     }
   };
 
+  // ✅ FIX: evita pagina bianca in modalità standalone + fallback se popup bloccato
   function openWhatsApp(phone: string, message: string) {
     const p = safeTel(phone);
     if (!p) {
       showToast("err", "Telefono mancante: non posso aprire WhatsApp.");
       return;
     }
-    window.open(waLink(p, message), "_blank", "noopener,noreferrer");
+
+    const url = waLink(p, message);
+
+    const isStandalone =
+      (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
+      (navigator as any).standalone === true;
+
+    if (isStandalone) {
+      window.location.href = url;
+      return;
+    }
+
+    const w = window.open(url, "_blank", "noopener,noreferrer");
+    if (!w) window.location.href = url;
   }
 
-  const confirmWhatsApp = (r: AdminRow) => {
+  // ✅ update stato prima, così il pannello si aggiorna sempre
+  const confirmWhatsApp = async (r: AdminRow) => {
+    await setStatus(r.id, "CONFERMATA");
     openWhatsApp(r.telefono || "", buildConfirmMsg(r));
-    void setStatus(r.id, "CONFERMATA");
   };
 
-  const cancelWhatsApp = (r: AdminRow) => {
+  const cancelWhatsApp = async (r: AdminRow) => {
+    await setStatus(r.id, "ANNULLATA");
     openWhatsApp(r.telefono || "", buildCancelMsg(r));
-    void setStatus(r.id, "ANNULLATA");
   };
 
   useEffect(() => {
@@ -1208,7 +1223,8 @@ export default function PannelloAdmin() {
 
                 {!loadingRows && !rowsError && filtered.length > visible.length ? (
                   <div style={styles.ok}>
-                    ⚠️ Modalità leggera attiva: mostro {visible.length} prenotazioni su {filtered.length}. Usa i filtri (Oggi / 7 giorni / Stato) per vedere le altre.
+                    ⚠️ Modalità leggera attiva: mostro {visible.length} prenotazioni su {filtered.length}. Usa i filtri
+                    (Oggi / 7 giorni / Stato) per vedere le altre.
                   </div>
                 ) : null}
 
@@ -1229,7 +1245,6 @@ export default function PannelloAdmin() {
 
                       const accent = accentForIndex(idx);
 
-                      // ✅ glow SOLO se è appena arrivata (non “tutte le NUOVA”)
                       const isHighlighted = Boolean(highlightIds[r.id] && highlightIds[r.id] > Date.now());
                       const glow = isHighlighted
                         ? {
@@ -1256,10 +1271,7 @@ export default function PannelloAdmin() {
                           <div style={accent.bar} />
 
                           <div style={styles.cardTop}>
-                            {/* ✅ Nome SEMPRE normale (non dorato) */}
                             <span style={nameBadgeStyle()}>{nome}</span>
-
-                            {/* ✅ Dorato solo nella pill “NUOVA” (già gestito in statusPillStyle) */}
                             <div style={{ ...styles.rightStatus, ...statusPillStyle(st) }}>{st}</div>
                           </div>
 
@@ -1321,11 +1333,11 @@ export default function PannelloAdmin() {
                               💬 WhatsApp
                             </a>
 
-                            <button style={{ ...styles.miniBtn, ...styles.miniGreen }} onClick={() => confirmWhatsApp(r)}>
+                            <button style={{ ...styles.miniBtn, ...styles.miniGreen }} onClick={() => void confirmWhatsApp(r)}>
                               ✅ Conferma (WhatsApp)
                             </button>
 
-                            <button style={{ ...styles.miniBtn, ...styles.miniRed }} onClick={() => cancelWhatsApp(r)}>
+                            <button style={{ ...styles.miniBtn, ...styles.miniRed }} onClick={() => void cancelWhatsApp(r)}>
                               ❌ Annulla (WhatsApp)
                             </button>
                           </div>

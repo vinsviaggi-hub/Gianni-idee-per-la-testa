@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState, type FormEvent } from "react";
+import React, { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import styles from "./chatbox.module.css";
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -17,7 +17,16 @@ export default function ChatBox() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const listRef = useRef<HTMLDivElement | null>(null);
+
   const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading]);
+
+  // ✅ scroll giù quando arrivano messaggi nuovi
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [messages, loading]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -25,8 +34,7 @@ export default function ChatBox() {
     if (!text || loading) return;
 
     setInput("");
-    const next = [...messages, { role: "user", content: text } as Msg];
-    setMessages(next);
+    setMessages((prev) => [...prev, { role: "user", content: text }]);
     setLoading(true);
 
     try {
@@ -64,21 +72,32 @@ export default function ChatBox() {
         </div>
       </div>
 
+      {/* ✅ box a colonna: LISTA scrollabile + FORM fisso sotto */}
       <div className={styles.box} aria-live="polite">
-        {messages.map((m, i) => (
-          <div
-            key={i}
-            className={`${styles.msg} ${m.role === "user" ? styles.user : styles.assistant}`}
-          >
-            <div className={styles.bubble}>
-              {m.content.split("\n").map((line, idx) => (
-                <p key={idx} className={styles.line}>
-                  {line}
-                </p>
-              ))}
+        <div className={styles.list} ref={listRef}>
+          {messages.map((m, i) => (
+            <div
+              key={i}
+              className={`${styles.msg} ${m.role === "user" ? styles.user : styles.assistant}`}
+            >
+              <div className={styles.bubble}>
+                {m.content.split("\n").map((line, idx) => (
+                  <p key={idx} className={styles.line}>
+                    {line}
+                  </p>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+
+          {loading && (
+            <div className={`${styles.msg} ${styles.assistant}`}>
+              <div className={styles.bubble}>
+                <p className={styles.line}>Sto scrivendo…</p>
+              </div>
+            </div>
+          )}
+        </div>
 
         <form className={styles.form} onSubmit={onSubmit}>
           <input
@@ -88,6 +107,13 @@ export default function ChatBox() {
             placeholder="Scrivi qui il tuo messaggio..."
             autoComplete="off"
             inputMode="text"
+            disabled={loading}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void onSubmit(e as any);
+              }
+            }}
           />
           <button className={styles.button} type="submit" disabled={!canSend}>
             {loading ? "..." : "Invia"}

@@ -1,6 +1,9 @@
 .wrap {
   width: 100%;
   min-height: 0;
+
+  /* ✅ quando scrollIntoView porta la chat “davanti” */
+  scroll-margin-top: 14px;
 }
 
 .header {
@@ -37,7 +40,6 @@
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 18px;
 
-  /* prima avevi padding qui: lo spostiamo su list e form */
   padding: 0;
 
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.25);
@@ -49,6 +51,9 @@
   /* ✅ questo evita che la chat si allunghi infinito */
   height: min(560px, 65vh);
   overflow: hidden;
+
+  /* ✅ iOS: evita tagli sotto la barra home */
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 /* ✅ questa è la zona che scrolla */
@@ -59,6 +64,19 @@
   padding: 14px;
 
   -webkit-overflow-scrolling: touch;
+
+  /* ✅ stabilizza scroll su mobile */
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+}
+
+/* (opzionale ma utile) scrollbar un po’ più pulita */
+.list::-webkit-scrollbar {
+  width: 8px;
+}
+.list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
 }
 
 .msg {
@@ -84,6 +102,10 @@
 
   /* look più “wow” */
   box-shadow: 0 10px 18px rgba(0, 0, 0, 0.18);
+
+  /* ✅ evita parole lunghe che spaccano layout */
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .user .bubble {
@@ -111,6 +133,10 @@
   padding: 12px 14px;
   border-top: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(0, 0, 0, 0.18);
+
+  /* ✅ iOS: non far “saltare” */
+  position: relative;
+  z-index: 2;
 }
 
 .input {
@@ -125,6 +151,9 @@
   color: rgba(255, 255, 255, 0.98);
   font-size: 16px;
   outline: none;
+
+  /* ✅ iOS zoom fix */
+  -webkit-text-size-adjust: 100%;
 }
 
 .input::placeholder {

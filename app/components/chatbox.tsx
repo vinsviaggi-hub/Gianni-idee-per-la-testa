@@ -17,15 +17,47 @@ export default function ChatBox() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // ✅ serve per scrollare la chat “davanti” quando viene aperta/montata
+  const wrapRef = useRef<HTMLElement | null>(null);
+
+  // ✅ scroll a fine lista messaggi
   const listRef = useRef<HTMLDivElement | null>(null);
+  const endRef = useRef<HTMLDivElement | null>(null);
+
+  // ✅ focus input quando apri
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading]);
 
-  // ✅ scroll giù quando arrivano messaggi nuovi
+  // ✅ quando la chat appare (monta), portala davanti e focus input
   useEffect(() => {
+    // doppio frame: su iOS a volte il layout “arriva” un attimo dopo
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        wrapRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        // focus leggermente dopo, così non “salta” la pagina su mobile
+        window.setTimeout(() => {
+          try {
+            inputRef.current?.focus();
+          } catch {}
+        }, 250);
+      });
+    });
+  }, []);
+
+  // ✅ scroll giù quando arrivano messaggi nuovi / loading
+  useEffect(() => {
+    // metodo più affidabile: ancoro in fondo
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+
+    // fallback: scroll sulla lista (in certi iPhone aiuta)
     const el = listRef.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    try {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    } catch {
+      el.scrollTop = el.scrollHeight;
+    }
   }, [messages, loading]);
 
   async function onSubmit(e: FormEvent) {
@@ -48,27 +80,23 @@ export default function ChatBox() {
       const data = await r.json().catch(() => null);
 
       const answer =
-        (data && (data.reply || data.message || data.text)) ||
-        (r.ok ? "Ok." : "Errore: risposta non valida.");
+        (data && (data.reply || data.message || data.text)) || (r.ok ? "Ok." : "Errore: risposta non valida.");
 
       setMessages((prev) => [...prev, { role: "assistant", content: String(answer) }]);
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "Errore di rete. Riprova tra poco." },
-      ]);
+      setMessages((prev) => [...prev, { role: "assistant", content: "Errore di rete. Riprova tra poco." }]);
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <section className={styles.wrap}>
+    <section className={styles.wrap} ref={wrapRef}>
       <div className={styles.header}>
         <div className={styles.badge}>💬 Chat assistente virtuale</div>
         <div className={styles.sub}>
-          Fai una domanda su servizi, orari o disponibilità. Per fissare un appuntamento usa sempre il
-          box prenotazione sotto la chat.
+          Fai una domanda su servizi, orari o disponibilità. Per fissare un appuntamento usa sempre il box prenotazione
+          sotto la chat.
         </div>
       </div>
 
@@ -76,10 +104,7 @@ export default function ChatBox() {
       <div className={styles.box} aria-live="polite">
         <div className={styles.list} ref={listRef}>
           {messages.map((m, i) => (
-            <div
-              key={i}
-              className={`${styles.msg} ${m.role === "user" ? styles.user : styles.assistant}`}
-            >
+            <div key={i} className={`${styles.msg} ${m.role === "user" ? styles.user : styles.assistant}`}>
               <div className={styles.bubble}>
                 {m.content.split("\n").map((line, idx) => (
                   <p key={idx} className={styles.line}>
@@ -97,10 +122,13 @@ export default function ChatBox() {
               </div>
             </div>
           )}
+
+          <div ref={endRef} />
         </div>
 
         <form className={styles.form} onSubmit={onSubmit}>
           <input
+            ref={inputRef}
             className={styles.input}
             value={input}
             onChange={(e) => setInput(e.target.value)}

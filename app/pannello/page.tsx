@@ -164,12 +164,11 @@ function statusPillStyle(st: BookingStatus): CSSProperties {
   return {
     background: "rgba(245,158,11,0.18)",
     border: "1px solid rgba(245,158,11,0.45)",
-    color: "#f6d36a", // ✅ dorato SOLO qui (la scritta “NUOVA”)
+    color: "#f6d36a",
     textShadow: "0 1px 0 rgba(0,0,0,0.55)",
   };
 }
 
-// ✅ bordo completo in base allo stato (NUOVA = più oro)
 function cardBorderColor(st: BookingStatus) {
   const s = normStatus(st);
   if (s === "CONFERMATA") return "rgba(34,197,94,0.30)";
@@ -177,7 +176,6 @@ function cardBorderColor(st: BookingStatus) {
   return "rgba(245,158,11,0.45)";
 }
 
-/** Striscia “barber pole” laterale sulle card */
 function accentForIndex(i: number) {
   const isBlue = i % 2 === 0;
   const bar: CSSProperties = {
@@ -195,7 +193,6 @@ function accentForIndex(i: number) {
   return { bar, borderGlow };
 }
 
-/** ✅ Notifiche: beep + voce (solo se attivi) */
 function playBeepSafe() {
   try {
     const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
@@ -255,7 +252,6 @@ function buildVoiceText(newOnes: AdminRow[]) {
 }
 
 export default function PannelloAdmin() {
-  // ✅ LOW POWER MODE: evita blocchi su tablet (blur/ombre pesanti + troppe card)
   const lowPower = useMemo(() => {
     if (typeof navigator === "undefined") return false;
     const ua = navigator.userAgent || "";
@@ -287,7 +283,6 @@ export default function PannelloAdmin() {
   const [soundOn, setSoundOn] = useState(true);
   const [voiceOn, setVoiceOn] = useState(false);
 
-  // 🔥 evidenzia SOLO le card appena arrivate (expire timestamp)
   const [highlightIds, setHighlightIds] = useState<Record<string, number>>({});
 
   const prevIdsRef = useRef<Set<string>>(new Set());
@@ -365,7 +360,6 @@ export default function PannelloAdmin() {
       });
   }, [rows, dayMode, pickDate, statusFilter]);
 
-  // ✅ limite render per tablet: evita freeze
   const visible = useMemo(() => {
     if (filtered.length <= MAX_RENDER) return filtered;
     return filtered.slice(0, MAX_RENDER);
@@ -388,7 +382,7 @@ export default function PannelloAdmin() {
   };
 
   const markHighlights = (newRows: AdminRow[]) => {
-    const expire = Date.now() + 90_000; // 90s
+    const expire = Date.now() + 90_000;
     setHighlightIds((prev) => {
       const next = { ...prev };
       newRows.forEach((r) => (next[r.id] = expire));
@@ -450,7 +444,6 @@ export default function PannelloAdmin() {
 
       const nowIds = new Set(normalized.map((r) => r.id));
 
-      // primo caricamento: NON suonare e NON brillare
       if (!hasLoadedOnceRef.current) {
         hasLoadedOnceRef.current = true;
         prevIdsRef.current = nowIds;
@@ -531,7 +524,6 @@ export default function PannelloAdmin() {
       setLoggedIn(true);
       showToast("ok", "Accesso effettuato.");
 
-      // reset “nuove card”
       hasLoadedOnceRef.current = false;
       prevIdsRef.current = new Set();
       setHighlightIds({});
@@ -584,16 +576,18 @@ export default function PannelloAdmin() {
     }
   };
 
-  // ✅ FIX: evita pagina bianca in modalità standalone + fallback se popup bloccato
-  function openWhatsApp(phone: string, message: string) {
+  // ✅ WhatsApp URL helper
+  function getWhatsAppUrl(phone: string, message: string) {
     const p = safeTel(phone);
     if (!p) {
       showToast("err", "Telefono mancante: non posso aprire WhatsApp.");
-      return;
+      return null;
     }
+    return waLink(p, message);
+  }
 
-    const url = waLink(p, message);
-
+  // ✅ FIX: standalone -> location.href, normale -> window.open, fallback se popup bloccato
+  function openWhatsAppUrl(url: string) {
     const isStandalone =
       (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
       (navigator as any).standalone === true;
@@ -607,15 +601,23 @@ export default function PannelloAdmin() {
     if (!w) window.location.href = url;
   }
 
-  // ✅ update stato prima, così il pannello si aggiorna sempre
-  const confirmWhatsApp = async (r: AdminRow) => {
-    await setStatus(r.id, "CONFERMATA");
-    openWhatsApp(r.telefono || "", buildConfirmMsg(r));
+  // ✅ IMPORTANTISSIMO: apri WhatsApp SUBITO, poi aggiorna stato in background
+  const confirmWhatsApp = (r: AdminRow) => {
+    const url = getWhatsAppUrl(r.telefono || "", buildConfirmMsg(r));
+    if (url) openWhatsAppUrl(url);
+
+    window.setTimeout(() => {
+      void setStatus(r.id, "CONFERMATA");
+    }, 0);
   };
 
-  const cancelWhatsApp = async (r: AdminRow) => {
-    await setStatus(r.id, "ANNULLATA");
-    openWhatsApp(r.telefono || "", buildCancelMsg(r));
+  const cancelWhatsApp = (r: AdminRow) => {
+    const url = getWhatsAppUrl(r.telefono || "", buildCancelMsg(r));
+    if (url) openWhatsAppUrl(url);
+
+    window.setTimeout(() => {
+      void setStatus(r.id, "ANNULLATA");
+    }, 0);
   };
 
   useEffect(() => {
@@ -625,7 +627,6 @@ export default function PannelloAdmin() {
 
   useEffect(() => {
     if (loggedIn) {
-      // quando entri già loggato: primo load muto
       hasLoadedOnceRef.current = false;
       prevIdsRef.current = new Set();
       setHighlightIds({});
@@ -636,13 +637,12 @@ export default function PannelloAdmin() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedIn]);
 
-  // ✅ refresh più soft
   useEffect(() => {
     if (!loggedIn) return;
 
     const id = window.setInterval(() => {
       if (document.hidden) return;
-      void loadRows(); // qui suona + highlight SOLO se arrivano nuove
+      void loadRows();
     }, 75_000);
 
     return () => window.clearInterval(id);
@@ -655,7 +655,6 @@ export default function PannelloAdmin() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [availDate, loggedIn]);
 
-  // ✅ styles memo
   const styles = useMemo<Record<string, CSSProperties>>(() => {
     const pageBg = lowPower
       ? "linear-gradient(180deg, #070b12 0%, #0b1220 55%, #070b12 100%)"
@@ -723,7 +722,6 @@ export default function PannelloAdmin() {
         filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.30))",
       },
 
-      // titolo blu/rosso
       h1: {
         margin: "8px 0 2px",
         fontSize: 30,
@@ -1103,9 +1101,7 @@ export default function PannelloAdmin() {
         <div style={styles.panel}>
           <div style={styles.panelHeader}>
             <div style={styles.panelTitle}>{loggedIn ? "Prenotazioni" : "Login"}</div>
-            <div style={{ opacity: 0.85, fontSize: 12 }}>
-              {loggedIn ? "Conferma/Annulla → apre WhatsApp con messaggio pronto" : ""}
-            </div>
+            <div style={{ opacity: 0.85, fontSize: 12 }}>{loggedIn ? "Conferma/Annulla → apre WhatsApp con messaggio pronto" : ""}</div>
           </div>
 
           <div style={styles.body}>
@@ -1333,11 +1329,11 @@ export default function PannelloAdmin() {
                               💬 WhatsApp
                             </a>
 
-                            <button style={{ ...styles.miniBtn, ...styles.miniGreen }} onClick={() => void confirmWhatsApp(r)}>
+                            <button style={{ ...styles.miniBtn, ...styles.miniGreen }} onClick={() => confirmWhatsApp(r)}>
                               ✅ Conferma (WhatsApp)
                             </button>
 
-                            <button style={{ ...styles.miniBtn, ...styles.miniRed }} onClick={() => void cancelWhatsApp(r)}>
+                            <button style={{ ...styles.miniBtn, ...styles.miniRed }} onClick={() => cancelWhatsApp(r)}>
                               ❌ Annulla (WhatsApp)
                             </button>
                           </div>

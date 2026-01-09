@@ -1,11 +1,11 @@
-// app/pannello/layout.tsx
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Pannello · Idee per la Testa",
 
-  // ⚠️ cache bust: aumenta v=3 se non aggiorna ancora
-  manifest: "/pannello/manifest.webmanifest?v=2",
+  // ✅ usa il manifest generato da app/pannello/manifest.ts
+  // (v=4 va bene per “bucare” cache)
+  manifest: "/pannello/manifest.webmanifest?v=4",
 
   appleWebApp: {
     capable: true,
@@ -13,10 +13,14 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
   },
 
-  // ✅ iOS usa soprattutto apple-touch-icon
+  // ✅ icone del pannello = P
+  // meglio dare anche 512 così Android/Chrome non sbaglia
   icons: {
-    apple: "/pannello/icons/apple-touch-icon.png?v=2",
-    icon: "/pannello/icons/icon-192.png?v=2",
+    apple: [{ url: "/pannello/icons/apple-touch-icon.png?v=4" }],
+    icon: [
+      { url: "/pannello/icons/icon-192.png?v=4", sizes: "192x192", type: "image/png" },
+      { url: "/pannello/icons/icon-512.png?v=4", sizes: "512x512", type: "image/png" },
+    ],
   },
 };
 

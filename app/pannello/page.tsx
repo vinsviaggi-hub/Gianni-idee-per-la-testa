@@ -90,9 +90,9 @@ function toastStyle(type: "ok" | "err", lowPower: boolean): CSSProperties {
     borderRadius: 14,
     border: type === "ok" ? "1px solid rgba(34,197,94,0.35)" : "1px solid rgba(239,68,68,0.35)",
     background: type === "ok" ? "rgba(34,197,94,0.14)" : "rgba(239,68,68,0.14)",
-    color: "rgba(255,255,255,0.92)",
+    color: "rgba(17,24,39,0.95)",
     fontWeight: 950,
-    boxShadow: lowPower ? "0 10px 26px rgba(0,0,0,0.28)" : "0 18px 55px rgba(0,0,0,0.45)",
+    boxShadow: lowPower ? "0 10px 26px rgba(0,0,0,0.12)" : "0 18px 55px rgba(0,0,0,0.16)",
     maxWidth: 860,
     width: "100%",
     textAlign: "center",
@@ -129,7 +129,7 @@ function statusPillStyle(st: BookingStatus): CSSProperties {
     return {
       background: "rgba(34,197,94,0.14)",
       border: "1px solid rgba(34,197,94,0.35)",
-      color: "rgba(255,255,255,0.92)",
+      color: "rgba(17,24,39,0.92)",
     };
   }
 
@@ -137,24 +137,23 @@ function statusPillStyle(st: BookingStatus): CSSProperties {
     return {
       background: "rgba(239,68,68,0.14)",
       border: "1px solid rgba(239,68,68,0.35)",
-      color: "rgba(255,255,255,0.92)",
+      color: "rgba(17,24,39,0.92)",
     };
   }
 
-  // NUOVA
   return {
     background: "rgba(245,158,11,0.18)",
     border: "1px solid rgba(245,158,11,0.45)",
-    color: "#f6d36a",
-    textShadow: "0 1px 0 rgba(0,0,0,0.55)",
+    color: "rgba(17,24,39,0.92)",
+    textShadow: "0 1px 0 rgba(255,255,255,0.35)",
   };
 }
 
-function cardBorderColor(st: BookingStatus) {
+function cardAccentColor(st: BookingStatus) {
   const s = normStatus(st);
-  if (s === "CONFERMATA") return "rgba(34,197,94,0.30)";
-  if (s === "ANNULLATA") return "rgba(239,68,68,0.30)";
-  return "rgba(245,158,11,0.45)";
+  if (s === "CONFERMATA") return "rgba(34,197,94,0.55)";
+  if (s === "ANNULLATA") return "rgba(239,68,68,0.55)";
+  return "rgba(245,158,11,0.65)"; // NUOVA
 }
 
 function playBeepSafe() {
@@ -258,7 +257,6 @@ export default function PannelloAdmin() {
     window.setTimeout(() => setToast(null), 2400);
   };
 
-  // ✅ Vista: Tabella stile “Sheets” su PC/Tablet, compatta su telefono
   const [viewMode, setViewMode] = useState<ViewMode>("AUTO");
   const [isPhone, setIsPhone] = useState(false);
   useEffect(() => {
@@ -274,7 +272,6 @@ export default function PannelloAdmin() {
   const effectiveView: "TABELLA" | "CARDS" = useMemo(() => {
     if (viewMode === "TABELLA") return "TABELLA";
     if (viewMode === "CARDS") return "CARDS";
-    // AUTO
     return isPhone ? "CARDS" : "TABELLA";
   }, [viewMode, isPhone]);
 
@@ -639,28 +636,29 @@ export default function PannelloAdmin() {
   }, [availDate, loggedIn]);
 
   const styles = useMemo<Record<string, CSSProperties>>(() => {
-    const pageBg = lowPower
-      ? "linear-gradient(180deg, #070b12 0%, #0b1220 55%, #070b12 100%)"
-      : "radial-gradient(1100px 640px at 12% 0%, rgba(37,99,235,0.16), transparent 60%)," +
-        "radial-gradient(1100px 640px at 88% 10%, rgba(239,68,68,0.16), transparent 60%)," +
-        "radial-gradient(1000px 620px at 50% 100%, rgba(245,158,11,0.12), transparent 62%)," +
-        "linear-gradient(180deg, #070b12 0%, #0b1220 55%, #070b12 100%)";
+    const pageBg = "#ffffff";
+    const text = "rgba(17,24,39,0.92)";
+    const textSoft = "rgba(17,24,39,0.72)";
+    const border = "rgba(15,23,42,0.12)";
+    const surface = "rgba(255,255,255,0.92)";
+    const surfaceSoft = "rgba(255,255,255,0.72)";
+    const shadow = lowPower ? "0 12px 28px rgba(0,0,0,0.10)" : "0 22px 70px rgba(0,0,0,0.12)";
 
     return {
       page: {
         minHeight: "100vh",
         padding: "18px 12px 36px",
         background: pageBg,
-        color: "rgba(255,255,255,0.92)",
+        color: text,
         fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial",
       },
       container: { maxWidth: 1120, margin: "0 auto" },
 
       header: {
         borderRadius: 20,
-        border: "1px solid rgba(255,255,255,0.10)",
-        background: "linear-gradient(135deg, rgba(10,14,24,0.92), rgba(10,14,24,0.72))",
-        boxShadow: lowPower ? "0 12px 28px rgba(0,0,0,0.40)" : "0 22px 70px rgba(0,0,0,0.55)",
+        border: `1px solid ${border}`,
+        background: `linear-gradient(135deg, ${surface}, ${surfaceSoft})`,
+        boxShadow: shadow,
         overflow: "hidden",
         position: "relative",
       },
@@ -688,13 +686,13 @@ export default function PannelloAdmin() {
         gap: 8,
         padding: "8px 10px",
         borderRadius: 999,
-        border: "1px solid rgba(255,255,255,0.14)",
-        background: "rgba(255,255,255,0.06)",
+        border: `1px solid ${border}`,
+        background: "rgba(15,23,42,0.04)",
         fontSize: 12,
         letterSpacing: 0.9,
         textTransform: "uppercase",
         fontWeight: 950,
-        color: "rgba(255,255,255,0.92)",
+        color: text,
       },
 
       titleRow: { display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" },
@@ -702,22 +700,40 @@ export default function PannelloAdmin() {
         fontSize: 22,
         opacity: 0.95,
         transform: "translateY(-1px)",
-        filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.30))",
+        filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.10))",
       },
 
+      // ✅ FIX: niente testo trasparente sul nome negozio → zero sfocatura
       h1: {
         margin: "8px 0 2px",
         fontSize: 30,
         fontWeight: 1200,
         letterSpacing: -0.6,
-        background: "linear-gradient(90deg, rgba(37,99,235,1), rgba(255,255,255,0.92), rgba(239,68,68,1))",
-        WebkitBackgroundClip: "text",
-        backgroundClip: "text",
-        color: "transparent",
-        textShadow: "0 2px 18px rgba(0,0,0,0.40)",
+        lineHeight: 1.05,
+        textShadow: "0 1px 0 rgba(255,255,255,0.35)",
+
+        // aiuta un po' la resa
+        WebkitFontSmoothing: "antialiased",
+        MozOsxFontSmoothing: "grayscale",
+        textRendering: "geometricPrecision",
+      },
+      h1Main: {
+  fontSize: 30,
+  fontWeight: 1200,
+  margin: 0,
+  letterSpacing: -0.6,
+  color: "#2563eb",
+  textShadow: "0 1px 0 rgba(255,255,255,0.35), 0 12px 26px rgba(0,0,0,0.18)",
+},
+
+      h1Biz: {
+        color: "rgba(185,28,28,0.98)", // rosso pieno (nitido)
+        fontWeight: 1250,
+        letterSpacing: -0.3,
+        textShadow: "0 1px 0 rgba(255,255,255,0.55)",
       },
 
-      sub: { margin: 0, opacity: 0.82, fontSize: 14, lineHeight: 1.35 },
+      sub: { margin: 0, opacity: 0.82, fontSize: 14, lineHeight: 1.35, color: textSoft },
 
       chipsRow: { marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" },
       chip: {
@@ -726,25 +742,23 @@ export default function PannelloAdmin() {
         gap: 8,
         padding: "9px 11px",
         borderRadius: 999,
-        border: "1px solid rgba(255,255,255,0.12)",
-        background: "rgba(255,255,255,0.06)",
+        border: `1px solid ${border}`,
+        background: "rgba(15,23,42,0.04)",
         fontWeight: 950,
         fontSize: 13,
-        color: "rgba(255,255,255,0.92)",
-        backdropFilter: lowPower ? undefined : "blur(8px)",
+        color: text,
       },
       chipBtn: { cursor: "pointer", userSelect: "none" },
 
       btnRow: { display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" },
       btn: {
-        border: "1px solid rgba(255,255,255,0.14)",
-        background: "rgba(255,255,255,0.06)",
-        color: "rgba(255,255,255,0.92)",
+        border: `1px solid ${border}`,
+        background: "rgba(15,23,42,0.04)",
+        color: text,
         padding: "10px 12px",
         borderRadius: 14,
         cursor: "pointer",
         fontWeight: 950,
-        backdropFilter: lowPower ? undefined : "blur(8px)",
       },
       btnPrimary: {
         border: "1px solid rgba(245,158,11,0.35)",
@@ -754,12 +768,12 @@ export default function PannelloAdmin() {
         borderRadius: 14,
         cursor: "pointer",
         fontWeight: 1100,
-        boxShadow: lowPower ? "0 10px 24px rgba(239,68,68,0.14)" : "0 16px 40px rgba(239,68,68,0.18)",
+        boxShadow: lowPower ? "0 10px 24px rgba(239,68,68,0.10)" : "0 16px 40px rgba(239,68,68,0.12)",
       },
       btnDanger: {
         border: "1px solid rgba(239,68,68,0.35)",
         background: "rgba(239,68,68,0.10)",
-        color: "rgba(255,255,255,0.92)",
+        color: text,
         padding: "10px 12px",
         borderRadius: 14,
         cursor: "pointer",
@@ -769,11 +783,10 @@ export default function PannelloAdmin() {
       panel: {
         marginTop: 12,
         borderRadius: 20,
-        border: "1px solid rgba(255,255,255,0.10)",
-        background: "rgba(10,14,24,0.72)",
-        boxShadow: lowPower ? "0 12px 28px rgba(0,0,0,0.42)" : "0 22px 70px rgba(0,0,0,0.55)",
+        border: `1px solid ${border}`,
+        background: "rgba(255,255,255,0.90)",
+        boxShadow: shadow,
         overflow: "hidden",
-        backdropFilter: lowPower ? undefined : "blur(10px)",
       },
       panelHeader: {
         padding: "12px 14px",
@@ -781,11 +794,11 @@ export default function PannelloAdmin() {
         alignItems: "center",
         justifyContent: "space-between",
         gap: 10,
-        borderBottom: "1px solid rgba(255,255,255,0.10)",
+        borderBottom: `1px solid ${border}`,
         background:
-          "linear-gradient(90deg, rgba(255,255,255,0.06), rgba(37,99,235,0.10), rgba(239,68,68,0.08))",
+          "linear-gradient(90deg, rgba(15,23,42,0.04), rgba(37,99,235,0.08), rgba(239,68,68,0.06))",
         flexWrap: "wrap",
-        color: "rgba(255,255,255,0.92)",
+        color: text,
       },
       panelTitle: { fontWeight: 1100, letterSpacing: 0.2 },
       body: { padding: 14 },
@@ -795,30 +808,29 @@ export default function PannelloAdmin() {
         margin: "10px auto 0",
         padding: 14,
         borderRadius: 18,
-        border: "1px solid rgba(255,255,255,0.12)",
-        background: "rgba(255,255,255,0.06)",
-        backdropFilter: lowPower ? undefined : "blur(10px)",
+        border: `1px solid ${border}`,
+        background: "rgba(255,255,255,0.85)",
       },
-      label: { fontWeight: 1000, opacity: 0.92, display: "block", marginBottom: 8 },
+      label: { fontWeight: 1000, opacity: 0.92, display: "block", marginBottom: 8, color: text },
       input: {
         width: "100%",
         padding: "12px 12px",
         borderRadius: 14,
-        border: "1px solid rgba(255,255,255,0.14)",
-        background: "rgba(255,255,255,0.06)",
-        color: "rgba(255,255,255,0.92)",
+        border: `1px solid ${border}`,
+        background: "#ffffff",
+        color: text,
         outline: "none",
         fontSize: 16,
         fontWeight: 900,
       },
-      helperSmall: { marginTop: 8, opacity: 0.8, fontSize: 12, lineHeight: 1.3 },
+      helperSmall: { marginTop: 8, opacity: 0.8, fontSize: 12, lineHeight: 1.3, color: textSoft },
       error: {
         marginTop: 10,
         padding: "10px 12px",
         borderRadius: 14,
         border: "1px solid rgba(239,68,68,0.35)",
         background: "rgba(239,68,68,0.12)",
-        color: "rgba(255,255,255,0.92)",
+        color: text,
         fontWeight: 950,
         fontSize: 13,
       },
@@ -828,7 +840,7 @@ export default function PannelloAdmin() {
         borderRadius: 14,
         border: "1px solid rgba(34,197,94,0.30)",
         background: "rgba(34,197,94,0.12)",
-        color: "rgba(255,255,255,0.92)",
+        color: text,
         fontWeight: 950,
         fontSize: 13,
       },
@@ -846,28 +858,27 @@ export default function PannelloAdmin() {
       pill: {
         padding: "9px 10px",
         borderRadius: 999,
-        border: "1px solid rgba(255,255,255,0.14)",
-        background: "rgba(255,255,255,0.06)",
+        border: `1px solid ${border}`,
+        background: "rgba(15,23,42,0.04)",
         cursor: "pointer",
         fontWeight: 1000,
         fontSize: 12,
         userSelect: "none",
-        color: "rgba(255,255,255,0.92)",
-        backdropFilter: lowPower ? undefined : "blur(8px)",
+        color: text,
       },
       pillActive: {
         background:
-          "linear-gradient(90deg, rgba(37,99,235,0.18), rgba(239,68,68,0.14), rgba(245,158,11,0.14))",
-        border: "1px solid rgba(255,255,255,0.18)",
+          "linear-gradient(90deg, rgba(37,99,235,0.14), rgba(239,68,68,0.10), rgba(245,158,11,0.10))",
+        border: "1px solid rgba(245,158,11,0.35)",
       },
 
       availBox: {
         width: "100%",
         borderRadius: 18,
-        border: "1px solid rgba(255,255,255,0.10)",
-        background: "rgba(255,255,255,0.05)",
+        border: `1px solid ${border}`,
+        background: "rgba(255,255,255,0.70)",
         padding: 12,
-        boxShadow: lowPower ? "0 10px 24px rgba(0,0,0,0.18)" : "0 18px 50px rgba(0,0,0,0.22)",
+        boxShadow: lowPower ? "0 10px 24px rgba(0,0,0,0.08)" : "0 18px 50px rgba(0,0,0,0.10)",
       },
       availTopRow: {
         display: "flex",
@@ -876,24 +887,22 @@ export default function PannelloAdmin() {
         justifyContent: "space-between",
         flexWrap: "wrap",
       },
-      availTitle: { fontWeight: 1100, letterSpacing: 0.2, display: "inline-flex", gap: 8, alignItems: "center" },
+      availTitle: { fontWeight: 1100, letterSpacing: 0.2, display: "inline-flex", gap: 8, alignItems: "center", color: text },
       slotsWrap: { marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" },
       slotChip: {
         padding: "8px 10px",
         borderRadius: 999,
-        border: "1px solid rgba(255,255,255,0.14)",
-        background: "rgba(255,255,255,0.06)",
+        border: `1px solid ${border}`,
+        background: "rgba(15,23,42,0.04)",
         fontWeight: 1000,
         fontSize: 12,
-        color: "rgba(255,255,255,0.92)",
-        backdropFilter: lowPower ? undefined : "blur(8px)",
+        color: text,
       },
 
-      // ✅ TABELLONE (Sheets style)
       tableWrap: {
         borderRadius: 18,
-        border: "1px solid rgba(255,255,255,0.10)",
-        background: "rgba(255,255,255,0.05)",
+        border: `1px solid ${border}`,
+        background: "#ffffff",
         overflow: "hidden",
       },
       tableScroll: {
@@ -917,26 +926,26 @@ export default function PannelloAdmin() {
         letterSpacing: 0.8,
         textTransform: "uppercase",
         fontWeight: 1100,
-        color: "rgba(255,255,255,0.86)",
-        background: "rgba(10,14,24,0.92)",
-        borderBottom: "1px solid rgba(255,255,255,0.10)",
+        color: "rgba(17,24,39,0.86)",
+        background: "rgba(248,250,252,0.98)",
+        borderBottom: `1px solid ${border}`,
         whiteSpace: "nowrap",
       },
       td: {
         padding: "10px 10px",
-        borderBottom: "1px solid rgba(255,255,255,0.08)",
+        borderBottom: `1px solid ${border}`,
         verticalAlign: "middle",
-        color: "rgba(255,255,255,0.92)",
+        color: text,
         whiteSpace: "nowrap",
       },
       tdWrap: {
         whiteSpace: "normal",
       },
       row: {
-        background: "rgba(255,255,255,0.02)",
+        background: "rgba(255,255,255,0.98)",
       },
       rowAlt: {
-        background: "rgba(255,255,255,0.035)",
+        background: "rgba(248,250,252,0.95)",
       },
       rowHover: {
         cursor: "pointer",
@@ -944,8 +953,8 @@ export default function PannelloAdmin() {
       rowNewGlow: {
         outline: "3px solid rgba(245,158,11,0.55)",
         boxShadow: lowPower
-          ? "0 0 0 6px rgba(245,158,11,0.10), 0 12px 28px rgba(0,0,0,0.30)"
-          : "0 0 0 8px rgba(245,158,11,0.12), 0 18px 55px rgba(0,0,0,0.34)",
+          ? "0 0 0 6px rgba(245,158,11,0.10), 0 12px 28px rgba(0,0,0,0.10)"
+          : "0 0 0 8px rgba(245,158,11,0.12), 0 18px 55px rgba(0,0,0,0.12)",
       },
 
       nameCell: {
@@ -966,11 +975,13 @@ export default function PannelloAdmin() {
         fontWeight: 1100,
         fontSize: 14,
         lineHeight: 1.15,
+        color: text,
       },
       subText: {
         fontSize: 12,
-        opacity: 0.78,
+        opacity: 0.72,
         marginTop: 2,
+        color: textSoft,
       },
 
       pillStatus: {
@@ -993,9 +1004,9 @@ export default function PannelloAdmin() {
       aBtn: {
         borderRadius: 12,
         padding: "8px 10px",
-        border: "1px solid rgba(255,255,255,0.12)",
-        background: "rgba(255,255,255,0.06)",
-        color: "rgba(255,255,255,0.92)",
+        border: `1px solid ${border}`,
+        background: "rgba(15,23,42,0.04)",
+        color: text,
         fontWeight: 1000,
         cursor: "pointer",
         textDecoration: "none",
@@ -1012,13 +1023,12 @@ export default function PannelloAdmin() {
       list: { display: "grid", gap: 10 },
       card: {
         borderRadius: 18,
-        background: "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.06))",
+        background: "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.95))",
         padding: 12,
         position: "relative",
         overflow: "hidden",
-        border: "1px solid rgba(255,255,255,0.10)",
-        boxShadow: lowPower ? "0 10px 24px rgba(0,0,0,0.22)" : "0 18px 50px rgba(0,0,0,0.30)",
-        backdropFilter: lowPower ? undefined : "blur(10px)",
+        border: "2px solid rgba(0,0,0,0.55)", // ✅ bordo nero pieno
+        boxShadow: lowPower ? "0 10px 24px rgba(0,0,0,0.10)" : "0 18px 50px rgba(0,0,0,0.12)",
       },
       cardTop: {
         display: "flex",
@@ -1039,7 +1049,7 @@ export default function PannelloAdmin() {
         color: "white",
         fontWeight: 1000,
         letterSpacing: 0.2,
-        boxShadow: "0 14px 30px rgba(0,0,0,0.30)",
+        boxShadow: "0 14px 30px rgba(0,0,0,0.12)",
       },
       grid: {
         display: "grid",
@@ -1048,12 +1058,12 @@ export default function PannelloAdmin() {
       },
       box: {
         borderRadius: 14,
-        border: "1px solid rgba(255,255,255,0.10)",
-        background: "rgba(255,255,255,0.06)",
+        border: `1px solid ${border}`,
+        background: "#ffffff",
         padding: "10px 10px",
       },
-      boxLabel: { fontSize: 11, fontWeight: 1100, opacity: 0.75, letterSpacing: 0.6 },
-      boxValue: { marginTop: 4, fontSize: 15, fontWeight: 1100, color: "rgba(255,255,255,0.92)" },
+      boxLabel: { fontSize: 11, fontWeight: 1100, opacity: 0.75, letterSpacing: 0.6, color: textSoft },
+      boxValue: { marginTop: 4, fontSize: 15, fontWeight: 1100, color: text },
 
       actions: {
         display: "flex",
@@ -1063,7 +1073,7 @@ export default function PannelloAdmin() {
         alignItems: "center",
       },
 
-      footer: { marginTop: 14, opacity: 0.7, fontSize: 12, textAlign: "center" },
+      footer: { marginTop: 14, opacity: 0.7, fontSize: 12, textAlign: "center", color: textSoft },
 
       toastWrap: {
         position: "fixed",
@@ -1082,24 +1092,24 @@ export default function PannelloAdmin() {
   const soundChipStyle = (on: boolean): CSSProperties => ({
     ...styles.chip,
     ...styles.chipBtn,
-    border: on ? "1px solid rgba(34,197,94,0.30)" : "1px solid rgba(255,255,255,0.12)",
-    background: on ? "rgba(34,197,94,0.10)" : "rgba(255,255,255,0.06)",
+    border: on ? "1px solid rgba(34,197,94,0.30)" : styles.chip.border,
+    background: on ? "rgba(34,197,94,0.10)" : (styles.chip.background as any),
     opacity: on ? 1 : 0.75,
   });
 
   const voiceChipStyle = (on: boolean): CSSProperties => ({
     ...styles.chip,
     ...styles.chipBtn,
-    border: on ? "1px solid rgba(37,99,235,0.28)" : "1px solid rgba(255,255,255,0.12)",
-    background: on ? "rgba(37,99,235,0.10)" : "rgba(255,255,255,0.06)",
+    border: on ? "1px solid rgba(37,99,235,0.28)" : styles.chip.border,
+    background: on ? "rgba(37,99,235,0.10)" : (styles.chip.background as any),
     opacity: on ? 1 : 0.75,
   });
 
   const viewChipStyle = (active: boolean): CSSProperties => ({
     ...styles.chip,
     ...styles.chipBtn,
-    border: active ? "1px solid rgba(245,158,11,0.35)" : "1px solid rgba(255,255,255,0.12)",
-    background: active ? "rgba(245,158,11,0.10)" : "rgba(255,255,255,0.06)",
+    border: active ? "1px solid rgba(245,158,11,0.35)" : styles.chip.border,
+    background: active ? "rgba(245,158,11,0.10)" : (styles.chip.background as any),
     opacity: active ? 1 : 0.8,
   });
 
@@ -1122,19 +1132,22 @@ export default function PannelloAdmin() {
             ? {
                 outline: "3px solid rgba(245,158,11,0.55)",
                 boxShadow: lowPower
-                  ? "0 0 0 6px rgba(245,158,11,0.10), 0 12px 28px rgba(0,0,0,0.30)"
-                  : "0 0 0 8px rgba(245,158,11,0.12), 0 18px 55px rgba(0,0,0,0.34)",
+                  ? "0 0 0 6px rgba(245,158,11,0.10), 0 12px 28px rgba(0,0,0,0.10)"
+                  : "0 0 0 8px rgba(245,158,11,0.12), 0 18px 55px rgba(0,0,0,0.12)",
               }
             : null;
+
+          const accent = cardAccentColor(st);
 
           return (
             <div
               key={r.id}
               style={{
                 ...styles.card,
-                border: `1px solid ${cardBorderColor(st)}`,
+                // ✅ bordo sinistro colorato per lo stato (ma bordo esterno resta nero)
+                borderLeft: `8px solid ${accent}`,
                 ...(glow || {}),
-                transition: "outline 220ms ease, box-shadow 220ms ease, border-color 220ms ease",
+                transition: "outline 220ms ease, box-shadow 220ms ease",
               }}
             >
               <div style={styles.cardTop}>
@@ -1323,8 +1336,8 @@ export default function PannelloAdmin() {
                         <td colSpan={7} style={{ ...styles.td, whiteSpace: "normal", padding: "12px 12px" }}>
                           <div
                             style={{
-                              border: "1px solid rgba(255,255,255,0.10)",
-                              background: "rgba(0,0,0,0.18)",
+                              border: "1px solid rgba(15,23,42,0.12)",
+                              background: "rgba(248,250,252,0.95)",
                               borderRadius: 14,
                               padding: 12,
                             }}
@@ -1380,7 +1393,12 @@ export default function PannelloAdmin() {
                   <span style={styles.scissors} aria-hidden>
                     ✂️
                   </span>
-                  <h1 style={styles.h1}>Prenotazioni · Idee per la Testa</h1>
+
+                  {/* ✅ FIX titolo: "Idee per la Testa" non è più trasparente → nitido */}
+                  <h1 style={styles.h1}>
+                    <span style={styles.h1Main}>Prenotazioni · </span>
+                    <span style={styles.h1Main}>Idee per la Testa</span>
+                  </h1>
                 </div>
 
                 <p style={styles.sub}>Pannello prenotazioni</p>
@@ -1601,18 +1619,15 @@ export default function PannelloAdmin() {
           .mm-grid { grid-template-columns: 1fr !important; }
         }
 
-        /* ✅ Tablet: nascondi colonne meno importanti per leggibilità */
         @media (max-width: 980px) {
           .mm-table .col-telefono { display: none; }
           .mm-table .col-servizio { display: none; }
         }
 
-        /* ✅ Righe: effetto “sheet” più pulito */
         .mm-table .mm-tr:hover td {
-          background: rgba(255,255,255,0.04);
+          background: rgba(15,23,42,0.035);
         }
 
-        /* ✅ Nuove: bordo oro visibile anche in tabella */
         .mm-table .mm-new td {
           box-shadow: inset 0 0 0 9999px rgba(245,158,11,0.045);
         }

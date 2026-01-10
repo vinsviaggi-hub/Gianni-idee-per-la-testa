@@ -120,15 +120,24 @@ export default function HomePage() {
       textAlign: "center",
     },
     hero: { marginTop: 12, padding: "14px 2px 10px", textAlign: "center" },
+
+    // ✅ FIX NITIDEZZA TITOLO (no “sfocato”)
     h1: {
       fontSize: "clamp(32px, 6vw, 44px)",
       lineHeight: 1.05,
       margin: "8px 0 10px",
-      fontWeight: 800,
-      textShadow: "0 12px 40px rgba(0,0,0,0.35)",
+      fontWeight: 900,
       textAlign: "center",
       wordBreak: "break-word",
+
+      // prima era: 0 12px 40px ... (troppo “blur”)
+      textShadow: "0 2px 10px rgba(0,0,0,0.22)",
+
+      WebkitFontSmoothing: "antialiased",
+      MozOsxFontSmoothing: "grayscale",
+      textRendering: "geometricPrecision",
     },
+
     actionsRow: {
       display: "flex",
       flexWrap: "wrap",
@@ -312,7 +321,9 @@ export default function HomePage() {
               </>
             ) : (
               <div style={{ ...styles.cardInner, paddingTop: 0 }}>
-                <div style={{ ...styles.cardSub, marginTop: 0 }}>Premi <b>“Apri chat”</b> se ti serve aiuto.</div>
+                <div style={{ ...styles.cardSub, marginTop: 0 }}>
+                  Premi <b>“Apri chat”</b> se ti serve aiuto.
+                </div>
               </div>
             )}
           </div>

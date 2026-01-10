@@ -17,15 +17,19 @@ export default function ChatBox() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // ✅ scroll SOLO dentro la chat
   const listRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading]);
 
-  // ✅ scroll SOLO dentro la chat (non la pagina)
-  const scrollToBottom = (smooth = true) => {
+  const scrollToBottom = (smooth: boolean) => {
     const el = listRef.current;
     if (!el) return;
     const top = el.scrollHeight;
+
+    // ✅ su iOS "smooth" mentre la tastiera è su può fare saltelli:
+    // lo usiamo solo quando risponde l’assistente
     try {
       el.scrollTo({ top, behavior: smooth ? "smooth" : "auto" });
     } catch {
@@ -33,26 +37,36 @@ export default function ChatBox() {
     }
   };
 
+  // ✅ al mount: porta giù SOLO la lista (non la pagina)
   useEffect(() => {
-    // al mount porta giù la lista (senza toccare la pagina)
-    window.setTimeout(() => scrollToBottom(false), 0);
+    // micro-delay per layout stabile
+    window.setTimeout(() => {
+      scrollToBottom(false);
+    }, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ✅ quando arrivano messaggi: resta in fondo (smooth SOLO se ultimo è assistant)
   useEffect(() => {
-    // quando arrivano messaggi/risposta, resta in fondo
-    scrollToBottom(true);
+    const last = messages[messages.length - 1];
+    const smooth = last?.role === "assistant";
+    scrollToBottom(smooth);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, loading]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+
     const text = input.trim();
     if (!text || loading) return;
 
+    // ✅ aggiungo subito il messaggio utente e vado in fondo (senza smooth)
     setInput("");
     setMessages((prev) => [...prev, { role: "user", content: text }]);
     setLoading(true);
+
+    // piccolo tick per far renderizzare il messaggio e poi scrollare interno
+    window.setTimeout(() => scrollToBottom(false), 0);
 
     try {
       const r = await fetch("/api/chat", {
@@ -73,6 +87,13 @@ export default function ChatBox() {
       setMessages((prev) => [...prev, { role: "assistant", content: "Errore di rete. Riprova tra poco." }]);
     } finally {
       setLoading(false);
+
+      // ✅ ri-focus (non forzo focus aggressivo, ma aiuta su mobile)
+      window.setTimeout(() => {
+        try {
+          inputRef.current?.focus();
+        } catch {}
+      }, 60);
     }
   }
 
@@ -111,6 +132,7 @@ export default function ChatBox() {
 
         <form className={styles.form} onSubmit={onSubmit}>
           <input
+            ref={inputRef}
             className={styles.input}
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -118,6 +140,13 @@ export default function ChatBox() {
             autoComplete="off"
             inputMode="text"
             disabled={loading}
+            // ✅ INVIO su iPhone: blocca comportamento che può far “saltare” la pagina
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void onSubmit(e as any);
+              }
+            }}
           />
           <button className={styles.button} type="submit" disabled={!canSend}>
             {loading ? "..." : "Invia"}

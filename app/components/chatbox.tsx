@@ -17,47 +17,32 @@ export default function ChatBox() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // ✅ serve per scrollare la chat “davanti” quando viene aperta/montata
-  const wrapRef = useRef<HTMLElement | null>(null);
-
-  // ✅ scroll a fine lista messaggi
   const listRef = useRef<HTMLDivElement | null>(null);
-  const endRef = useRef<HTMLDivElement | null>(null);
-
-  // ✅ focus input quando apri
-  const inputRef = useRef<HTMLInputElement | null>(null);
 
   const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading]);
 
-  // ✅ quando la chat appare (monta), portala davanti e focus input
-  useEffect(() => {
-    // doppio frame: su iOS a volte il layout “arriva” un attimo dopo
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        wrapRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-        // focus leggermente dopo, così non “salta” la pagina su mobile
-        window.setTimeout(() => {
-          try {
-            inputRef.current?.focus();
-          } catch {}
-        }, 250);
-      });
-    });
-  }, []);
-
-  // ✅ scroll giù quando arrivano messaggi nuovi / loading
-  useEffect(() => {
-    // metodo più affidabile: ancoro in fondo
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-
-    // fallback: scroll sulla lista (in certi iPhone aiuta)
+  // ✅ scroll SOLO dentro la chat (non la pagina)
+  const scrollToBottom = (smooth = true) => {
     const el = listRef.current;
     if (!el) return;
+    const top = el.scrollHeight;
     try {
-      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      el.scrollTo({ top, behavior: smooth ? "smooth" : "auto" });
     } catch {
-      el.scrollTop = el.scrollHeight;
+      el.scrollTop = top;
     }
+  };
+
+  useEffect(() => {
+    // al mount porta giù la lista (senza toccare la pagina)
+    window.setTimeout(() => scrollToBottom(false), 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    // quando arrivano messaggi/risposta, resta in fondo
+    scrollToBottom(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, loading]);
 
   async function onSubmit(e: FormEvent) {
@@ -80,7 +65,8 @@ export default function ChatBox() {
       const data = await r.json().catch(() => null);
 
       const answer =
-        (data && (data.reply || data.message || data.text)) || (r.ok ? "Ok." : "Errore: risposta non valida.");
+        (data && (data.reply || data.message || data.text)) ||
+        (r.ok ? "Ok." : "Errore: risposta non valida.");
 
       setMessages((prev) => [...prev, { role: "assistant", content: String(answer) }]);
     } catch {
@@ -91,7 +77,7 @@ export default function ChatBox() {
   }
 
   return (
-    <section className={styles.wrap} ref={wrapRef}>
+    <section className={styles.wrap}>
       <div className={styles.header}>
         <div className={styles.badge}>💬 Chat assistente virtuale</div>
         <div className={styles.sub}>
@@ -100,7 +86,6 @@ export default function ChatBox() {
         </div>
       </div>
 
-      {/* ✅ box a colonna: LISTA scrollabile + FORM fisso sotto */}
       <div className={styles.box} aria-live="polite">
         <div className={styles.list} ref={listRef}>
           {messages.map((m, i) => (
@@ -122,13 +107,10 @@ export default function ChatBox() {
               </div>
             </div>
           )}
-
-          <div ref={endRef} />
         </div>
 
         <form className={styles.form} onSubmit={onSubmit}>
           <input
-            ref={inputRef}
             className={styles.input}
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -136,12 +118,6 @@ export default function ChatBox() {
             autoComplete="off"
             inputMode="text"
             disabled={loading}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void onSubmit(e as any);
-              }
-            }}
           />
           <button className={styles.button} type="submit" disabled={!canSend}>
             {loading ? "..." : "Invia"}

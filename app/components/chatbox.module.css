@@ -34,7 +34,7 @@
   line-height: 1.35;
 }
 
-/* ✅ BOX diventa layout a colonna con altezza controllata */
+/* ✅ BOX: iOS FIX contro “salto” con tastiera (NO vh secco) */
 .box {
   background: rgba(0, 0, 0, 0.22);
   border: 1px solid rgba(255, 255, 255, 0.16);
@@ -47,16 +47,19 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-
-  /* ✅ questo evita che la chat si allunghi infinito */
-  height: min(560px, 65vh);
   overflow: hidden;
 
-  /* ✅ iOS: evita tagli sotto la barra home */
+  /* ✅ altezza stabile: max fisso + viewport “nuove” unit */
+  max-height: 560px;
+  height: 65svh; /* Safari moderno */
+  height: 65dvh; /* fallback */
+  height: 65vh;  /* vecchio fallback */
+
+  /* ✅ iOS: safe area */
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-/* ✅ questa è la zona che scrolla */
+/* ✅ zona scroll */
 .list {
   flex: 1;
   min-height: 0;
@@ -67,10 +70,9 @@
 
   /* ✅ stabilizza scroll su mobile */
   overscroll-behavior: contain;
-  scroll-behavior: smooth;
 }
 
-/* (opzionale ma utile) scrollbar un po’ più pulita */
+/* scrollbar un po’ più pulita */
 .list::-webkit-scrollbar {
   width: 8px;
 }
@@ -97,13 +99,9 @@
   border-radius: 16px;
   padding: 12px 14px;
 
-  /* ✅ FORZIAMO IL COLORE TESTO */
   color: rgba(255, 255, 255, 0.96);
-
-  /* look più “wow” */
   box-shadow: 0 10px 18px rgba(0, 0, 0, 0.18);
 
-  /* ✅ evita parole lunghe che spaccano layout */
   overflow-wrap: anywhere;
   word-break: break-word;
 }
@@ -126,7 +124,7 @@
   color: inherit;
 }
 
-/* ✅ form “fisso” in basso dentro la box */
+/* ✅ form fisso in basso */
 .form {
   display: flex;
   gap: 10px;
@@ -134,7 +132,6 @@
   border-top: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(0, 0, 0, 0.18);
 
-  /* ✅ iOS: non far “saltare” */
   position: relative;
   z-index: 2;
 }
@@ -152,7 +149,6 @@
   font-size: 16px;
   outline: none;
 
-  /* ✅ iOS zoom fix */
   -webkit-text-size-adjust: 100%;
 }
 
@@ -190,17 +186,22 @@
   .bubble {
     max-width: 96%;
   }
+
   .line {
     font-size: 15px;
   }
+
   .input,
   .button {
     height: 50px;
   }
 
-  /* ✅ un filo più bassa su schermi piccoli */
+  /* ✅ stessa logica: max + svh/dvh */
   .box {
-    height: min(520px, 62vh);
+    max-height: 520px;
+    height: 62svh;
+    height: 62dvh;
+    height: 62vh;
   }
 
   .list {

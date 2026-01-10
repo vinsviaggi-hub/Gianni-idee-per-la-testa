@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import ChatBox from "./components/chatbox";
 import FastBookingForm from "./components/FastBookingForm";
 import CancelBookingForm from "./components/CancelBookingForm";
@@ -36,11 +36,38 @@ export default function HomePage() {
 
   const [showHelp, setShowHelp] = useState(false);
 
+  const refHelp = useRef<HTMLDivElement>(null!);
   const refBook = useRef<HTMLDivElement>(null!);
   const refCancel = useRef<HTMLDivElement>(null!);
 
   const scrollTo = (ref: React.RefObject<HTMLDivElement>) => {
     ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  // ✅ quando apri la chat: portala davanti (questo risolve “rimane alta”)
+  useEffect(() => {
+    if (!showHelp) return;
+    // piccolo delay per dare tempo al DOM di renderizzare ChatBox
+    window.setTimeout(() => {
+      scrollTo(refHelp);
+    }, 60);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showHelp]);
+
+  const openHelpAndScroll = () => {
+    setShowHelp(true);
+    // lo scroll avviene anche dal useEffect sopra
+  };
+
+  const toggleHelpAndScroll = () => {
+    setShowHelp((v) => {
+      const next = !v;
+      if (next) {
+        // se la stai aprendo, lo scroll lo fa il useEffect
+        return true;
+      }
+      return false;
+    });
   };
 
   const styles: Record<string, React.CSSProperties> = {
@@ -70,7 +97,7 @@ export default function HomePage() {
     },
     hero: { marginTop: 12, padding: "14px 2px 10px", textAlign: "center" },
     h1: {
-      fontSize: "clamp(32px, 6vw, 44px)", // ✅ si adatta (telefono/tablet/desktop)
+      fontSize: "clamp(32px, 6vw, 44px)",
       lineHeight: 1.05,
       margin: "8px 0 10px",
       fontWeight: 800,
@@ -96,8 +123,8 @@ export default function HomePage() {
       border: "1px solid rgba(255,255,255,0.16)",
       borderLeft: "1px solid rgba(255,255,255,0.10)",
       transition: "transform .08s ease, filter .08s ease",
-      minHeight: 44, // ✅ touch
-      flex: "1 1 140px", // ✅ su mobile va a righe, su tablet si allinea bene
+      minHeight: 44,
+      flex: "1 1 140px",
       maxWidth: 260,
     },
     btnPrimary: {
@@ -152,7 +179,7 @@ export default function HomePage() {
         ? "rgba(255,255,255,0.14)"
         : "linear-gradient(90deg, #2f7dff 0%, #49c6ff 120%)",
       color: showHelp ? "rgba(255,255,255,0.95)" : "#061a3a",
-      minHeight: 44, // ✅ touch
+      minHeight: 44,
     },
     footer: {
       marginTop: 18,
@@ -182,8 +209,16 @@ export default function HomePage() {
             <button style={{ ...styles.btn, ...styles.btnBlue }} onClick={() => scrollTo(refCancel)}>
               Annulla
             </button>
-            <button style={styles.btn} onClick={() => setShowHelp((v) => !v)}>
-              {showHelp ? "Chiudi assistenza" : "Assistenza"}
+
+            {/* ✅ se apri assistenza, ti porto davanti alla chat */}
+            <button
+              style={styles.btn}
+              onClick={() => {
+                if (!showHelp) openHelpAndScroll();
+                else scrollTo(refHelp);
+              }}
+            >
+              {showHelp ? "Vai alla chat" : "Assistenza"}
             </button>
           </div>
 
@@ -227,7 +262,11 @@ export default function HomePage() {
           </div>
 
           {/* ASSISTENZA */}
-          <div style={styles.card} className="mm-card mm-help">
+          <div
+            ref={refHelp}
+            style={styles.card}
+            className="mm-card mm-help"
+          >
             <div style={{ ...styles.cardInner, paddingBottom: 10 }}>
               <div style={styles.helpTop}>
                 <div>
@@ -239,7 +278,13 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                <button style={styles.helpBtn} onClick={() => setShowHelp((v) => !v)}>
+                <button
+                  style={styles.helpBtn}
+                  onClick={() => {
+                    if (!showHelp) openHelpAndScroll();
+                    else toggleHelpAndScroll();
+                  }}
+                >
                   {showHelp ? "Nascondi" : "Apri chat"}
                 </button>
               </div>
@@ -285,7 +330,6 @@ export default function HomePage() {
         input[type="date"], select { width: 100%; }
         .mm-row, .mm-grid, .mm-col { min-width: 0; }
 
-        /* ✅ Tablet/desktop: 2 colonne (Info + Assistenza), ma Prenota/Annulla full width */
         @media (min-width: 900px) {
           .mm-home-grid {
             grid-template-columns: 1fr 1fr !important;

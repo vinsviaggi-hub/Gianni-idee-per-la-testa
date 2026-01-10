@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./chatbox.module.css";
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -23,50 +23,42 @@ export default function ChatBox() {
 
   const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading]);
 
-  const scrollToBottom = (smooth: boolean) => {
+  const scrollToBottom = (smooth = false) => {
     const el = listRef.current;
     if (!el) return;
     const top = el.scrollHeight;
 
-    // ✅ su iOS "smooth" mentre la tastiera è su può fare saltelli:
-    // lo usiamo solo quando risponde l’assistente
+    // ⚠️ iOS + tastiera: "smooth" può fare saltelli → default auto
+    const behavior: ScrollBehavior = smooth ? "smooth" : "auto";
+
     try {
-      el.scrollTo({ top, behavior: smooth ? "smooth" : "auto" });
+      el.scrollTo({ top, behavior });
     } catch {
       el.scrollTop = top;
     }
   };
 
-  // ✅ al mount: porta giù SOLO la lista (non la pagina)
-  useEffect(() => {
-    // micro-delay per layout stabile
-    window.setTimeout(() => {
-      scrollToBottom(false);
-    }, 0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const focusInputNoScroll = () => {
+    try {
+      // preventScroll non è supportato ovunque, ma quando c’è evita il “salto pagina”
+      (inputRef.current as any)?.focus?.({ preventScroll: true });
+    } catch {
+      try {
+        inputRef.current?.focus();
+      } catch {}
+    }
+  };
 
-  // ✅ quando arrivano messaggi: resta in fondo (smooth SOLO se ultimo è assistant)
-  useEffect(() => {
-    const last = messages[messages.length - 1];
-    const smooth = last?.role === "assistant";
-    scrollToBottom(smooth);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, loading]);
-
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-
+  const sendMessage = async () => {
     const text = input.trim();
     if (!text || loading) return;
 
-    // ✅ aggiungo subito il messaggio utente e vado in fondo (senza smooth)
     setInput("");
     setMessages((prev) => [...prev, { role: "user", content: text }]);
     setLoading(true);
 
-    // piccolo tick per far renderizzare il messaggio e poi scrollare interno
-    window.setTimeout(() => scrollToBottom(false), 0);
+    // ✅ dopo render del messaggio utente, scroll solo lista
+    requestAnimationFrame(() => scrollToBottom(false));
 
     try {
       const r = await fetch("/api/chat", {
@@ -77,25 +69,37 @@ export default function ChatBox() {
       });
 
       const data = await r.json().catch(() => null);
-
       const answer =
         (data && (data.reply || data.message || data.text)) ||
         (r.ok ? "Ok." : "Errore: risposta non valida.");
 
       setMessages((prev) => [...prev, { role: "assistant", content: String(answer) }]);
+
+      // ✅ quando risponde l’assistente, possiamo fare smooth (se vuoi: io lo lascio OFF su iOS)
+      requestAnimationFrame(() => scrollToBottom(false));
     } catch {
       setMessages((prev) => [...prev, { role: "assistant", content: "Errore di rete. Riprova tra poco." }]);
+      requestAnimationFrame(() => scrollToBottom(false));
     } finally {
       setLoading(false);
 
-      // ✅ ri-focus (non forzo focus aggressivo, ma aiuta su mobile)
-      window.setTimeout(() => {
-        try {
-          inputRef.current?.focus();
-        } catch {}
-      }, 60);
+      // ✅ ri-focalizza SENZA scrollare la pagina
+      window.setTimeout(() => focusInputNoScroll(), 60);
     }
-  }
+  };
+
+  // ✅ al mount: porta giù SOLO la lista (non la pagina)
+  useEffect(() => {
+    const t = window.setTimeout(() => scrollToBottom(false), 0);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ✅ quando cambiano messaggi/loading: resta in fondo (sempre auto per evitare “salti”)
+  useEffect(() => {
+    requestAnimationFrame(() => scrollToBottom(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, loading]);
 
   return (
     <section className={styles.wrap}>
@@ -130,7 +134,13 @@ export default function ChatBox() {
           )}
         </div>
 
-        <form className={styles.form} onSubmit={onSubmit}>
+        <form
+          className={styles.form}
+          onSubmit={(e) => {
+            e.preventDefault();
+            void sendMessage();
+          }}
+        >
           <input
             ref={inputRef}
             className={styles.input}
@@ -140,14 +150,19 @@ export default function ChatBox() {
             autoComplete="off"
             inputMode="text"
             disabled={loading}
-            // ✅ INVIO su iPhone: blocca comportamento che può far “saltare” la pagina
+            onFocus={() => {
+              // ✅ quando si apre la tastiera, tieni la chat in fondo (solo lista)
+              window.setTimeout(() => scrollToBottom(false), 120);
+            }}
             onKeyDown={(e) => {
+              // ✅ Invio: non far “saltare” la pagina, invia noi
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                void onSubmit(e as any);
+                void sendMessage();
               }
             }}
           />
+
           <button className={styles.button} type="submit" disabled={!canSend}>
             {loading ? "..." : "Invia"}
           </button>

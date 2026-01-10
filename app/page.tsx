@@ -22,6 +22,22 @@ export default function HomePage() {
     return /iPad|Android/i.test(ua);
   }, []);
 
+  // ✅ mobile detection (serve per overlay chat su iPhone)
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 760px)");
+    const sync = () => setIsMobile(mq.matches);
+    sync();
+    try {
+      mq.addEventListener("change", sync);
+      return () => mq.removeEventListener("change", sync);
+    } catch {
+      // Safari vecchio
+      mq.addListener(sync);
+      return () => mq.removeListener(sync);
+    }
+  }, []);
+
   // Fallback (se config manca qualcosa)
   const brandTop = biz?.labelTop ?? "GALAXBOT AI · BARBER SHOP";
   const title = biz?.title ?? "Idee per la Testa";
@@ -36,7 +52,6 @@ export default function HomePage() {
 
   const [showHelp, setShowHelp] = useState(false);
 
-  const refHelp = useRef<HTMLDivElement>(null!);
   const refBook = useRef<HTMLDivElement>(null!);
   const refCancel = useRef<HTMLDivElement>(null!);
 
@@ -44,31 +59,40 @@ export default function HomePage() {
     ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  // ✅ quando apri la chat: portala davanti (questo risolve “rimane alta”)
+  // ✅ IMPORTANTISSIMO (iPhone):
+  // Quando la chat è aperta su mobile, blocco COMPLETAMENTE lo scroll della pagina sotto.
+  // Questo è ciò che evita il salto “mi spara sopra” quando tocchi l’input o invii.
   useEffect(() => {
+    if (!isMobile) return;
     if (!showHelp) return;
-    // piccolo delay per dare tempo al DOM di renderizzare ChatBox
-    window.setTimeout(() => {
-      scrollTo(refHelp);
-    }, 60);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showHelp]);
 
-  const openHelpAndScroll = () => {
-    setShowHelp(true);
-    // lo scroll avviene anche dal useEffect sopra
-  };
+    const scrollY = window.scrollY;
 
-  const toggleHelpAndScroll = () => {
-    setShowHelp((v) => {
-      const next = !v;
-      if (next) {
-        // se la stai aprendo, lo scroll lo fa il useEffect
-        return true;
-      }
-      return false;
-    });
-  };
+    const prevOverflow = document.body.style.overflow;
+    const prevPosition = document.body.style.position;
+    const prevTop = document.body.style.top;
+    const prevLeft = document.body.style.left;
+    const prevRight = document.body.style.right;
+    const prevWidth = document.body.style.width;
+
+    document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.body.style.position = prevPosition;
+      document.body.style.top = prevTop;
+      document.body.style.left = prevLeft;
+      document.body.style.right = prevRight;
+      document.body.style.width = prevWidth;
+
+      window.scrollTo(0, scrollY);
+    };
+  }, [showHelp, isMobile]);
 
   const styles: Record<string, React.CSSProperties> = {
     page: {
@@ -210,15 +234,8 @@ export default function HomePage() {
               Annulla
             </button>
 
-            {/* ✅ se apri assistenza, ti porto davanti alla chat */}
-            <button
-              style={styles.btn}
-              onClick={() => {
-                if (!showHelp) openHelpAndScroll();
-                else scrollTo(refHelp);
-              }}
-            >
-              {showHelp ? "Vai alla chat" : "Assistenza"}
+            <button style={styles.btn} onClick={() => setShowHelp(true)}>
+              Assistenza
             </button>
           </div>
 
@@ -261,12 +278,8 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* ASSISTENZA */}
-          <div
-            ref={refHelp}
-            style={styles.card}
-            className="mm-card mm-help"
-          >
+          {/* ASSISTENZA (desktop inline) */}
+          <div style={styles.card} className="mm-card mm-help">
             <div style={{ ...styles.cardInner, paddingBottom: 10 }}>
               <div style={styles.helpTop}>
                 <div>
@@ -278,30 +291,28 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                <button
-                  style={styles.helpBtn}
-                  onClick={() => {
-                    if (!showHelp) openHelpAndScroll();
-                    else toggleHelpAndScroll();
-                  }}
-                >
-                  {showHelp ? "Nascondi" : "Apri chat"}
+                <button style={styles.helpBtn} onClick={() => setShowHelp(true)}>
+                  Apri chat
                 </button>
               </div>
             </div>
 
-            {showHelp ? (
+            {/* ✅ su desktop la chat resta dentro la card */}
+            {!isMobile && showHelp ? (
               <>
                 <div style={styles.divider} />
                 <div style={styles.cardInner}>
                   <ChatBox />
+                  <div style={{ marginTop: 10 }}>
+                    <button style={styles.helpBtn as any} onClick={() => setShowHelp(false)}>
+                      Chiudi
+                    </button>
+                  </div>
                 </div>
               </>
             ) : (
               <div style={{ ...styles.cardInner, paddingTop: 0 }}>
-                <div style={{ ...styles.cardSub, marginTop: 0 }}>
-                  Premi <b>“Apri chat”</b> se ti serve aiuto.
-                </div>
+                <div style={{ ...styles.cardSub, marginTop: 0 }}>Premi <b>“Apri chat”</b> se ti serve aiuto.</div>
               </div>
             )}
           </div>
@@ -324,6 +335,24 @@ export default function HomePage() {
         <footer style={styles.footer}>Powered by GalaxBot AI</footer>
       </div>
 
+      {/* ✅ MOBILE: chat in overlay (risolve scroll che “scappa sopra” su iPhone) */}
+      {isMobile && showHelp ? (
+        <div className="mm-helpModal" role="dialog" aria-modal="true">
+          <div className="mm-helpSheet">
+            <div className="mm-helpTopbar">
+              <div className="mm-helpTitle">Assistenza 💬</div>
+              <button className="mm-helpClose" onClick={() => setShowHelp(false)}>
+                Chiudi
+              </button>
+            </div>
+
+            <div className="mm-helpBody">
+              <ChatBox />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <style>{`
         * { box-sizing: border-box; }
         input, select, textarea { max-width: 100%; }
@@ -338,6 +367,67 @@ export default function HomePage() {
           .mm-span2 {
             grid-column: 1 / -1;
           }
+        }
+
+        .mm-helpModal{
+          position: fixed;
+          inset: 0;
+          z-index: 9999;
+          padding: 14px 12px calc(14px + env(safe-area-inset-bottom));
+          background: rgba(0,0,0,0.55);
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          display: flex;
+          justify-content: center;
+          align-items: flex-start;
+          overscroll-behavior: contain;
+        }
+
+        .mm-helpSheet{
+          width: 100%;
+          max-width: 980px;
+          border-radius: 18px;
+          border: 1px solid rgba(255,255,255,0.16);
+          background: rgba(6, 18, 42, 0.92);
+          box-shadow: 0 18px 60px rgba(0,0,0,0.45);
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          max-height: calc(100dvh - 28px - env(safe-area-inset-bottom));
+        }
+
+        .mm-helpTopbar{
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          padding: 12px 14px;
+          border-bottom: 1px solid rgba(255,255,255,0.12);
+          background: linear-gradient(90deg, rgba(47,125,255,0.20), rgba(255,75,75,0.14));
+          flex: 0 0 auto;
+        }
+
+        .mm-helpTitle{
+          font-weight: 950;
+          color: rgba(255,255,255,0.92);
+        }
+
+        .mm-helpClose{
+          cursor: pointer;
+          border: 0;
+          padding: 10px 12px;
+          border-radius: 12px;
+          font-weight: 950;
+          background: rgba(255,255,255,0.14);
+          color: rgba(255,255,255,0.92);
+        }
+
+        .mm-helpBody{
+          padding: 14px;
+          flex: 1 1 auto;
+          min-height: 0;
+          overflow: auto;
+          -webkit-overflow-scrolling: touch;
         }
       `}</style>
     </main>

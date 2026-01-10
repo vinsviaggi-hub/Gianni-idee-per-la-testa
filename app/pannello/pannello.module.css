@@ -231,9 +231,12 @@
   backdrop-filter: blur(10px);
 }
 
+/* ✅ MOD: righe “card” con bordo completo */
 .table{
   width:100%;
-  border-collapse:collapse;
+  border-collapse:separate;     /* era collapse */
+  border-spacing:0 10px;        /* spazio tra righe */
+  padding:10px;                 /* respiro ai bordi */
 }
 
 .table thead th{
@@ -250,6 +253,7 @@
   z-index:1;
 }
 
+/* Riga base */
 .row td{
   padding:14px 12px;
   border-top:1px solid rgba(255,255,255,.10);
@@ -259,10 +263,33 @@
   vertical-align:top;
 }
 
-.row:nth-child(odd){background: rgba(255,255,255,.04);}
-.row:nth-child(even){background: rgba(0,0,0,.12);}
+/* ✅ MOD: bordo completo su ogni riga (effetto box) */
+.row td{
+  border-top:2px solid rgba(0,0,0,.85);
+  border-bottom:2px solid rgba(0,0,0,.85);
+  background: rgba(0,0,0,.12);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.20) inset; /* aiuta a vederlo sul tema scuro */
+}
 
-.row:hover{background: rgba(0, 160, 255, .10);}
+.row td:first-child{
+  border-left:2px solid rgba(0,0,0,.85);
+  border-top-left-radius:14px;
+  border-bottom-left-radius:14px;
+}
+
+.row td:last-child{
+  border-right:2px solid rgba(0,0,0,.85);
+  border-top-right-radius:14px;
+  border-bottom-right-radius:14px;
+}
+
+/* Alternanza (resta ma molto leggera, non rovina il bordo) */
+.row:nth-child(odd){background: transparent;}
+.row:nth-child(even){background: transparent;}
+
+.row:hover td{
+  background: rgba(0, 160, 255, .10);
+}
 
 .tdEmpty{
   padding:18px 14px;
@@ -276,7 +303,13 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
 }
 
-.name{font-weight:1200;}
+/* ✅ MOD: nome cliente più grande */
+.name{
+  font-weight:1200;
+  font-size:17px;
+  letter-spacing:.2px;
+}
+
 .order{max-width:420px;}
 .addr{max-width:340px;}
 .allergeni{max-width:260px;}
@@ -413,3 +446,78 @@
   font-weight:900;
   color: rgba(255,255,255,.75);
 }
+
+/* ================================
+   FIX-TABELLA-PRENOTAZIONI
+   Nome cliente più grande
+   Righe separate con bordo completo
+================================ */
+
+/* Nome cliente più leggibile */
+.mm-table td:first-child,
+.name {
+  font-size: 18px;
+  font-weight: 900;
+}
+
+/* Tabella a righe separate */
+.mm-table {
+  border-collapse: separate;
+  border-spacing: 0 10px;
+}
+
+/* Riga stile card */
+.mm-table tr td {
+  background: rgba(0,0,0,0.06);
+  border-top: 2px solid rgba(0,0,0,0.85);
+  border-bottom: 2px solid rgba(0,0,0,0.85);
+}
+
+/* Lati */
+.mm-table tr td:first-child {
+  border-left: 2px solid rgba(0,0,0,0.85);
+  border-top-left-radius: 14px;
+  border-bottom-left-radius: 14px;
+}
+
+.mm-table tr td:last-child {
+  border-right: 2px solid rgba(0,0,0,0.85);
+  border-top-right-radius: 14px;
+  border-bottom-right-radius: 14px;
+}
+
+/* FIX-TABELLA-PRENOTAZIONI */
+:global(.mm-table){
+  width:100%;
+  border-collapse:separate;
+  border-spacing:0 10px;
+  padding:10px;
+}
+
+:global(.mm-table tbody tr td){
+  border-top:2px solid rgba(0,0,0,.85);
+  border-bottom:2px solid rgba(0,0,0,.85);
+  background: rgba(0,0,0,.12);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.20) inset;
+}
+
+/* ✅ nome cliente più grande (prima colonna) */
+:global(.mm-table tbody tr td:first-child){
+  border-left:2px solid rgba(0,0,0,.85);
+  border-top-left-radius:14px;
+  border-bottom-left-radius:14px;
+  font-size:17px;
+  font-weight:1200;
+  letter-spacing:.2px;
+}
+
+:global(.mm-table tbody tr td:last-child){
+  border-right:2px solid rgba(0,0,0,.85);
+  border-top-right-radius:14px;
+  border-bottom-right-radius:14px;
+}
+
+:global(.mm-table tbody tr:hover td){
+  background: rgba(0,160,255,.10);
+}
+

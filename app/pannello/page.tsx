@@ -1631,7 +1631,52 @@ export default function PannelloAdmin() {
         .mm-table .mm-new td {
           box-shadow: inset 0 0 0 9999px rgba(245,158,11,0.045);
         }
-      `}</style>
+      
+
+/* FIX-TABELLA-PRENOTAZIONI */
+/* Righe stile card + bordi + testi più grandi */
+.mm-table{ border-collapse: separate !important; border-spacing: 0 10px !important; }
+
+/* Header più grande */
+.mm-table thead th{
+  font-size: 14px !important;
+  font-weight: 900 !important;
+  letter-spacing: .8px !important;
+  color: #111 !important;
+}
+
+/* Celle più leggibili */
+.mm-table tbody td{
+  font-size: 15.5px !important;
+  font-weight: 800 !important;
+  color: #111 !important;
+}
+
+/* Nome cliente ancora più grande */
+.mm-table .name{
+  font-size: 18px !important;
+  font-weight: 900 !important;
+}
+
+/* Card bianche dentro + bordo completo */
+.mm-table tbody tr td{
+  background: #fff !important;
+  border-top: 2px solid rgba(0,0,0,.85) !important;
+  border-bottom: 2px solid rgba(0,0,0,.85) !important;
+}
+.mm-table tbody tr td:first-child{
+  border-left: 2px solid rgba(0,0,0,.85) !important;
+  border-top-left-radius: 14px !important;
+  border-bottom-left-radius: 14px !important;
+}
+.mm-table tbody tr td:last-child{
+  border-right: 2px solid rgba(0,0,0,.85) !important;
+  border-top-right-radius: 14px !important;
+  border-bottom-right-radius: 14px !important;
+}
+
+.mm-table tbody tr:hover td{ background: #f3f7ff !important; }
+`}</style>
     </div>
   );
 }

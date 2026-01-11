@@ -487,6 +487,125 @@
 }
 
 /* FIX-TABELLA-PRENOTAZIONI */
+
+/* FIX-MM-TABLE-CARDS (AUTO) START */
+/* Tabella stile "card" + bordi neri + testi grandi (vale per className="mm-table") */
+
+:global(.mm-table){
+  width: 100%;
+  border-collapse: separate !important;
+  border-spacing: 0 10px !important;
+  padding: 10px !important;
+}
+
+/* intestazioni più grandi */
+:global(.mm-table thead th){
+  font-size: 14px !important;
+  font-weight: 950 !important;
+  letter-spacing: .6px !important;
+  color: rgba(0,0,0,.78) !important;
+}
+
+/* celle più leggibili */
+:global(.mm-table tbody td){
+  font-size: 15px !important;
+  font-weight: 900 !important;
+  color: rgba(0,0,0,.85) !important;
+  background: #ffffff !important;
+
+  border-top: 2px solid rgba(0,0,0,.85) !important;
+  border-bottom: 2px solid rgba(0,0,0,.85) !important;
+}
+
+/* bordo sinistro/destra + angoli arrotondati */
+:global(.mm-table tbody tr td:first-child){
+  border-left: 2px solid rgba(0,0,0,.85) !important;
+  border-top-left-radius: 14px !important;
+  border-bottom-left-radius: 14px !important;
+
+  /* NOME CLIENTE PIÙ GRANDE */
+  font-size: 18px !important;
+  font-weight: 950 !important;
+  letter-spacing: .2px !important;
+}
+
+:global(.mm-table tbody tr td:last-child){
+  border-right: 2px solid rgba(0,0,0,.85) !important;
+  border-top-right-radius: 14px !important;
+  border-bottom-right-radius: 14px !important;
+}
+
+/* hover leggero */
+:global(.mm-table tbody tr:hover td){
+  background: rgba(0,160,255,.06) !important;
+}
+
+/* riga ID più piccola (se c’è) */
+:global(.mm-table tbody tr td:first-child small),
+:global(.mm-table tbody tr td:first-child .mm-id),
+:global(.mm-table tbody tr td:first-child .sub){
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  opacity: .85 !important;
+}
+/* FIX-MM-TABLE-CARDS (AUTO) END */
+
+
+/* FIX-TABLE-READABILITY (AUTO) */
+/* Intestazioni più grandi */
+:global(.mm-table thead th){
+  font-size: 14px !important;
+  font-weight: 950 !important;
+  letter-spacing: .6px !important;
+}
+
+/* Celle più leggibili (data/ora/servizio/telefono/stato) */
+:global(.mm-table tbody td){
+  font-size: 15px !important;
+  font-weight: 900 !important;
+}
+
+/* Nomi cliente ancora più grandi (prima colonna) */
+:global(.mm-table tbody tr td:first-child){
+  font-size: 18px !important;
+  font-weight: 950 !important;
+  letter-spacing: .2px !important;
+}
+
+/* Riga ID un filo più piccola (se c'è) */
+:global(.mm-table tbody tr td:first-child small),
+:global(.mm-table tbody tr td:first-child .mm-id),
+:global(.mm-table tbody tr td:first-child .sub){
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  opacity: .85 !important;
+}
+
+
+/* FIX-NOMI-E-INTESTAZIONI (AUTO) */
+/* Intestazioni più grandi */
+:global(.mm-table thead th){
+  font-size: 14px !important;
+  font-weight: 950 !important;
+  letter-spacing: .6px !important;
+}
+
+/* Nomi cliente più grandi (prima colonna) */
+:global(.mm-table tbody tr td:first-child){
+  font-size: 18px !important;
+  font-weight: 950 !important;
+  letter-spacing: .2px !important;
+}
+
+/* Riga ID un filo più piccola (se c'è) */
+:global(.mm-table tbody tr td:first-child small),
+:global(.mm-table tbody tr td:first-child .mm-id),
+:global(.mm-table tbody tr td:first-child .sub){
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  opacity: .85 !important;
+}
+
 :global(.mm-table){
   width:100%;
   border-collapse:separate;
@@ -521,3 +640,51 @@
   background: rgba(0,160,255,.10);
 }
 
+/* === FORCE-MM-TABLE-GLOBAL (AUTO) === */
+/* Questo blocco è globale (CSS Modules-safe) e forza:
+   - righe stile card con bordi neri
+   - nomi + intestazioni più grandi
+   - interno bianco e testo scuro
+*/
+
+:global(.mm-table){
+  width: 100%;
+  border-collapse: separate !important;
+  border-spacing: 0 10px !important;
+}
+
+:global(.mm-table thead th){
+  font-size: 14px !important;
+  font-weight: 950 !important;
+  letter-spacing: .6px !important;
+  color: #111 !important;
+}
+
+:global(.mm-table tbody tr td){
+  background: #ffffff !important;
+  color: #111 !important;
+  font-size: 15px !important;
+  font-weight: 750 !important;
+  border-top: 2px solid rgba(0,0,0,.85) !important;
+  border-bottom: 2px solid rgba(0,0,0,.85) !important;
+}
+
+:global(.mm-table tbody tr td:first-child){
+  border-left: 2px solid rgba(0,0,0,.85) !important;
+  border-top-left-radius: 14px !important;
+  border-bottom-left-radius: 14px !important;
+
+  font-size: 20px !important;      /* NOME CLIENTE PIÙ GRANDE */
+  font-weight: 950 !important;
+}
+
+:global(.mm-table tbody tr td:last-child){
+  border-right: 2px solid rgba(0,0,0,.85) !important;
+  border-top-right-radius: 14px !important;
+  border-bottom-right-radius: 14px !important;
+}
+
+:global(.mm-table tbody tr:hover td){
+  background: #f3f7ff !important;
+}
+/* === /FORCE-MM-TABLE-GLOBAL (AUTO) === */

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -20,6 +20,15 @@ export const metadata: Metadata = {
     title: "Prenota",
     statusBarStyle: "default",
   },
+};
+
+// ✅ FIX tablet “zoomato”: viewport corretto per tutti i dispositivi
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  // se vuoi permettere zoom pinch, dimmelo e lo togliamo
+  maximumScale: 1,
+  userScalable: false,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -51,8 +51,49 @@ async function safeJsonFromResponse(r: Response) {
   }
 }
 
+async function fetchScriptGet(
+  baseUrl: string,
+  params: Record<string, string>,
+  secret?: string
+): Promise<{ httpOk: boolean; data: any; raw: string; status: number } | { httpOk: false; data: null; raw: string; status: number; parseError: string }> {
+  const url = new URL(baseUrl);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  if (secret) url.searchParams.set("secret", secret);
+
+  const r = await fetch(url.toString(), { method: "GET", cache: "no-store" });
+  const parsed = await safeJsonFromResponse(r);
+  if (!parsed.ok) {
+    return { httpOk: false, data: null, raw: parsed.raw, status: r.status, parseError: parsed.error };
+  }
+  return { httpOk: r.ok, data: parsed.data, raw: parsed.raw, status: r.status };
+}
+
+async function fetchScriptPost(
+  baseUrl: string,
+  body: any
+): Promise<{ httpOk: boolean; data: any; raw: string; status: number } | { httpOk: false; data: null; raw: string; status: number; parseError: string }> {
+  const r = await fetch(baseUrl, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+
+  const parsed = await safeJsonFromResponse(r);
+  if (!parsed.ok) {
+    return { httpOk: false, data: null, raw: parsed.raw, status: r.status, parseError: parsed.error };
+  }
+  return { httpOk: r.ok, data: parsed.data, raw: parsed.raw, status: r.status };
+}
+
+function looksOk(data: any) {
+  return data && (data.ok === true || data.ok === "true");
+}
+
 /** ===========================
  *  GET /api/admin/bookings
+ *  - default: lista prenotazioni
+ *  - ?action=settings : legge bookings_open
  *  =========================== */
 export async function GET(req: Request) {
   try {
@@ -65,30 +106,77 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url);
-    const limit = Math.min(Math.max(Number(searchParams.get("limit") || 300), 1), 800);
+    const action = String(searchParams.get("action") || "").toLowerCase();
 
-    // ✅ azione admin per lista prenotazioni
-    const url =
-      `${GOOGLE_SCRIPT_URL}?action=admin_list&limit=${encodeURIComponent(String(limit))}` +
-      (GOOGLE_SCRIPT_SECRET ? `&secret=${encodeURIComponent(GOOGLE_SCRIPT_SECRET)}` : "");
+    // ========= SETTINGS =========
+    if (action === "settings") {
+      // Provo prima azione "admin_get_settings", poi fallback "get_settings"
+      const first = await fetchScriptGet(GOOGLE_SCRIPT_URL, { action: "admin_get_settings" }, GOOGLE_SCRIPT_SECRET || undefined);
+      if ("parseError" in first) {
+        return jsonNoStore({ ok: false, error: first.parseError, details: first.raw }, { status: 502 });
+      }
+      if (first.httpOk && looksOk(first.data)) {
+        return jsonNoStore({ ok: true, bookings_open: Boolean(first.data.bookings_open) });
+      }
 
-    const r = await fetch(url, { method: "GET", cache: "no-store" });
+      const second = await fetchScriptGet(GOOGLE_SCRIPT_URL, { action: "get_settings" }, GOOGLE_SCRIPT_SECRET || undefined);
+      if ("parseError" in second) {
+        return jsonNoStore({ ok: false, error: second.parseError, details: second.raw }, { status: 502 });
+      }
+      if (second.httpOk && looksOk(second.data)) {
+        return jsonNoStore({ ok: true, bookings_open: Boolean(second.data.bookings_open) });
+      }
 
-    const parsed = await safeJsonFromResponse(r);
-    if (!parsed.ok) {
-      return jsonNoStore({ ok: false, error: parsed.error, details: parsed.raw }, { status: 502 });
-    }
-
-    const data: any = parsed.data;
-
-    if (!r.ok || data?.ok === false) {
       return jsonNoStore(
-        { ok: false, error: data?.error || `Errore admin_list (${r.status})`, details: data ?? parsed.raw },
+        {
+          ok: false,
+          error: (second.data?.error || first.data?.error || "Errore leggendo settings") as string,
+          details: second.data ?? first.data,
+        },
         { status: 502 }
       );
     }
 
-    return jsonNoStore({ ok: true, rows: data.rows || [], count: data.count || 0 });
+    // ========= LIST =========
+    const limit = Math.min(Math.max(Number(searchParams.get("limit") || 300), 1), 800);
+
+    // Provo prima "admin_list", fallback "list"
+    const first = await fetchScriptGet(
+      GOOGLE_SCRIPT_URL,
+      { action: "admin_list", limit: String(limit) },
+      GOOGLE_SCRIPT_SECRET || undefined
+    );
+
+    if ("parseError" in first) {
+      return jsonNoStore({ ok: false, error: first.parseError, details: first.raw }, { status: 502 });
+    }
+
+    if (first.httpOk && looksOk(first.data)) {
+      return jsonNoStore({ ok: true, rows: first.data.rows || [], count: first.data.count || 0 });
+    }
+
+    const second = await fetchScriptGet(
+      GOOGLE_SCRIPT_URL,
+      { action: "list", limit: String(limit) },
+      GOOGLE_SCRIPT_SECRET || undefined
+    );
+
+    if ("parseError" in second) {
+      return jsonNoStore({ ok: false, error: second.parseError, details: second.raw }, { status: 502 });
+    }
+
+    if (second.httpOk && looksOk(second.data)) {
+      return jsonNoStore({ ok: true, rows: second.data.rows || [], count: second.data.count || 0 });
+    }
+
+    return jsonNoStore(
+      {
+        ok: false,
+        error: second.data?.error || first.data?.error || `Errore lista (${second.status || first.status})`,
+        details: second.data ?? first.data,
+      },
+      { status: 502 }
+    );
   } catch (err: any) {
     return jsonNoStore(
       { ok: false, error: "Errore server /api/admin/bookings", details: err?.message ?? String(err) },
@@ -99,11 +187,29 @@ export async function GET(req: Request) {
 
 /** ===========================
  *  POST /api/admin/bookings
- *  body: { id, status }
+ *  - set status
+ *  - set bookings_open
  *  =========================== */
-type Body = { id?: string; status?: string };
+type Body = {
+  action?: string;
 
-const ALLOWED = new Set(["NUOVA", "CONFERMATA", "ANNULLATA"]);
+  // status update (versione "id/status" stile barbiere)
+  id?: string;
+  status?: string;
+  stato?: string;
+
+  // status update (versione arrosticini)
+  timestampISO?: string;
+  telefono?: string;
+  dataISO?: string;
+  ora?: string;
+
+  // settings
+  bookings_open?: boolean;
+  open?: boolean;
+};
+
+const ALLOWED = new Set(["NUOVA", "CONFERMATA", "CONSEGNATA", "ANNULLATA"]);
 
 export async function POST(req: Request) {
   try {
@@ -116,42 +222,108 @@ export async function POST(req: Request) {
     }
 
     const body = (await req.json().catch(() => null)) as Body | null;
-    const id = String(body?.id || "").trim();
-    const status = String(body?.status || "").trim().toUpperCase();
+    const action = String(body?.action || "").trim().toLowerCase();
 
-    if (!id) return jsonNoStore({ ok: false, error: "Manca id" }, { status: 400 });
-    if (!ALLOWED.has(status)) return jsonNoStore({ ok: false, error: "Status non valido" }, { status: 400 });
+    // ========= SET BOOKINGS OPEN/CLOSED =========
+    if (action === "setbookingsopen" || action === "admin_set_bookings_open" || action === "set_bookings_open") {
+      const open = Boolean(body?.bookings_open ?? body?.open);
 
-    // ✅ azione admin per cambio stato
-    // IMPORTANT: mando sia "status" che "stato" per compatibilità
-    const r = await fetch(GOOGLE_SCRIPT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({
-        action: "admin_set_status",
-        id,
-        status,
-        stato: status,
+      // Provo prima "admin_set_bookings_open", fallback "set_bookings_open"
+      const first = await fetchScriptPost(GOOGLE_SCRIPT_URL, {
+        action: "admin_set_bookings_open",
+        bookings_open: open,
+        open,
         secret: GOOGLE_SCRIPT_SECRET || undefined,
-      }),
-      cache: "no-store",
-    });
+      });
 
-    const parsed = await safeJsonFromResponse(r);
-    if (!parsed.ok) {
-      return jsonNoStore({ ok: false, error: parsed.error, details: parsed.raw }, { status: 502 });
-    }
+      if ("parseError" in first) {
+        return jsonNoStore({ ok: false, error: first.parseError, details: first.raw }, { status: 502 });
+      }
+      if (first.httpOk && looksOk(first.data)) {
+        return jsonNoStore({ ok: true, bookings_open: open, message: "Impostazione salvata" });
+      }
 
-    const data: any = parsed.data;
+      const second = await fetchScriptPost(GOOGLE_SCRIPT_URL, {
+        action: "set_bookings_open",
+        bookings_open: open,
+        open,
+        secret: GOOGLE_SCRIPT_SECRET || undefined,
+      });
 
-    if (!r.ok || data?.ok === false) {
+      if ("parseError" in second) {
+        return jsonNoStore({ ok: false, error: second.parseError, details: second.raw }, { status: 502 });
+      }
+      if (second.httpOk && looksOk(second.data)) {
+        return jsonNoStore({ ok: true, bookings_open: open, message: "Impostazione salvata" });
+      }
+
       return jsonNoStore(
-        { ok: false, error: data?.error || `Errore admin_set_status (${r.status})`, details: data ?? parsed.raw },
+        {
+          ok: false,
+          error: second.data?.error || first.data?.error || "Errore salvando impostazione",
+          details: second.data ?? first.data,
+        },
         { status: 502 }
       );
     }
 
-    return jsonNoStore({ ok: true, status, message: "Stato aggiornato" });
+    // ========= UPDATE STATUS =========
+    const id = String(body?.id || "").trim();
+    const status = String(body?.status || body?.stato || "").trim().toUpperCase();
+
+    // Validazioni solo se mi stai chiedendo update status
+    if (!status) return jsonNoStore({ ok: false, error: "Manca status/stato" }, { status: 400 });
+    if (!ALLOWED.has(status)) return jsonNoStore({ ok: false, error: "Status non valido" }, { status: 400 });
+
+    // Prima provo stile "admin_set_status"
+    const first = await fetchScriptPost(GOOGLE_SCRIPT_URL, {
+      action: "admin_set_status",
+      id: id || undefined,
+      status,
+      stato: status,
+      // compat arrosticini:
+      timestampISO: body?.timestampISO,
+      telefono: body?.telefono,
+      dataISO: body?.dataISO,
+      ora: body?.ora,
+      secret: GOOGLE_SCRIPT_SECRET || undefined,
+    });
+
+    if ("parseError" in first) {
+      return jsonNoStore({ ok: false, error: first.parseError, details: first.raw }, { status: 502 });
+    }
+    if (first.httpOk && looksOk(first.data)) {
+      return jsonNoStore({ ok: true, status, message: "Stato aggiornato" });
+    }
+
+    // Fallback stile "updateStatus" (Apps Script arrosticini)
+    const second = await fetchScriptPost(GOOGLE_SCRIPT_URL, {
+      action: "updateStatus",
+      id: id || undefined,
+      status,
+      stato: status,
+      timestampISO: body?.timestampISO,
+      telefono: body?.telefono,
+      dataISO: body?.dataISO,
+      ora: body?.ora,
+      secret: GOOGLE_SCRIPT_SECRET || undefined,
+    });
+
+    if ("parseError" in second) {
+      return jsonNoStore({ ok: false, error: second.parseError, details: second.raw }, { status: 502 });
+    }
+    if (second.httpOk && looksOk(second.data)) {
+      return jsonNoStore({ ok: true, status, message: "Stato aggiornato" });
+    }
+
+    return jsonNoStore(
+      {
+        ok: false,
+        error: second.data?.error || first.data?.error || `Errore update status`,
+        details: second.data ?? first.data,
+      },
+      { status: 502 }
+    );
   } catch (err: any) {
     return jsonNoStore(
       { ok: false, error: "Errore server /api/admin/bookings (POST)", details: err?.message ?? String(err) },

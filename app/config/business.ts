@@ -1,32 +1,18 @@
 // app/config/business.ts
 
-export type BusinessConfig = {
-  slug: string;
-
-  // Hero
-  badgeTop: string;      // es: "GALAXBOT AI · BARBER SHOP"
-  headline: string;      // es: "Idee per la Testa 💈"
-  subheadline: string;   // frase sotto
-
-  // Info box
-  servicesShort: string; // es: "Taglio, barba, sfumature..."
-  city: string;          // es: "Castelnuovo Vomano (TE)"
-  phone: string;         // es: "333 123 4567"
-};
-
-const BUSINESS: BusinessConfig = {
-  slug: "idee-per-la-testa",
-
-  badgeTop: "GALAXBOT AI · BARBER SHOP",
-  headline: "Idee per la Testa 💈",
-  subheadline:
-    "Un assistente virtuale che gestisce richieste, prenotazioni e cancellazioni per il tuo barber shop, 24 ore su 24.",
+export const businessConfig = {
+  labelTop: "GALAXBOT AI · BARBER SHOP",
+  title: "Idee per la Testa",
 
   servicesShort: "Taglio, barba, sfumature, styling, bimbi",
   city: "Castelnuovo Vomano (TE)",
   phone: "333 123 4567",
-};
 
-export function getBusinessConfig(): BusinessConfig {
-  return BUSINESS;
+  hoursTitle: "Orari di apertura",
+  // queste sono SOLO le righe che mostri in home
+  hoursLines: ["Lunedì–Sabato: 8:30–12:30 e 15:00–20:00", "Domenica: chiuso"],
+} as const;
+
+export function getBusinessConfig() {
+  return businessConfig;
 }

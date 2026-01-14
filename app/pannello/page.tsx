@@ -37,6 +37,10 @@ type AvailabilityOk = { ok: true; freeSlots: string[] };
 type AvailabilityErr = { ok: false; error?: string; details?: any };
 type AvailabilityResponse = AvailabilityOk | AvailabilityErr;
 
+type SettingsResponse =
+  | { ok: true; bookings_open: boolean }
+  | { ok: false; error?: string; details?: any };
+
 type ViewMode = "AUTO" | "TABELLA" | "CARDS";
 
 function normStatus(s?: string): BookingStatus {
@@ -259,6 +263,11 @@ export default function PannelloAdmin() {
 
   const [viewMode, setViewMode] = useState<ViewMode>("AUTO");
   const [isPhone, setIsPhone] = useState(false);
+
+  // ✅ SETTINGS: prenotazioni aperte/chiuse
+  const [bookingsOpen, setBookingsOpen] = useState<boolean | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+
   useEffect(() => {
     const calc = () => {
       const w = window.innerWidth || 0;
@@ -287,6 +296,7 @@ export default function PannelloAdmin() {
       if (m === "AUTO" || m === "TABELLA" || m === "CARDS") setViewMode(m);
     } catch {}
   }, []);
+
   useEffect(() => {
     try {
       window.localStorage.setItem("mm_admin_sound", soundOn ? "1" : "0");
@@ -482,6 +492,59 @@ export default function PannelloAdmin() {
     }
   };
 
+  // ✅ LOAD SETTINGS (bookings_open)
+  const loadSettings = async (opts?: { silent?: boolean }) => {
+    setSettingsLoading(true);
+    try {
+      const res = await fetch("/api/admin/bookings?action=settings", { credentials: "include" });
+      const data: SettingsResponse = await safeJson(res);
+
+      if (!(data as any)?.ok) {
+        setBookingsOpen(null);
+        if (!opts?.silent) showToast("err", (data as any)?.error || "Errore lettura impostazioni prenotazioni.");
+        return;
+      }
+
+      setBookingsOpen(Boolean((data as any).bookings_open));
+    } catch {
+      setBookingsOpen(null);
+      if (!opts?.silent) showToast("err", "Errore rete: impostazioni non caricate.");
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+  const setBookingsOpenRemote = async (open: boolean) => {
+    const prev = bookingsOpen;
+    setBookingsOpen(open);
+    setSettingsLoading(true);
+
+    try {
+      const res = await fetch("/api/admin/bookings", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "setBookingsOpen", bookings_open: open }),
+      });
+
+      const data = await safeJson(res);
+      if (!(data as any)?.ok) {
+        setBookingsOpen(prev ?? null);
+        showToast("err", (data as any)?.error || "Salvataggio impostazione fallito.");
+        return;
+      }
+
+      showToast("ok", open ? "✅ Prenotazioni APERTE" : "⛔️ Prenotazioni CHIUSE");
+      // riallineo (sicurezza)
+      await loadSettings({ silent: true });
+    } catch {
+      setBookingsOpen(prev ?? null);
+      showToast("err", "Errore rete: impostazione non salvata.");
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
   const login = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
@@ -517,6 +580,7 @@ export default function PannelloAdmin() {
 
       await loadRows({ silent: true });
       await loadAvailability(availDate);
+      await loadSettings({ silent: true });
     } catch {
       setAuthError("Errore rete durante il login.");
     }
@@ -532,6 +596,7 @@ export default function PannelloAdmin() {
     setAvailMsg("");
     setHighlightIds({});
     setExpandedId(null);
+    setBookingsOpen(null);
     showToast("ok", "Logout effettuato.");
   };
 
@@ -613,6 +678,7 @@ export default function PannelloAdmin() {
 
       void loadRows({ silent: true });
       void loadAvailability(availDate);
+      void loadSettings({ silent: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedIn]);
@@ -703,7 +769,6 @@ export default function PannelloAdmin() {
         filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.10))",
       },
 
-      // ✅ FIX: niente testo trasparente sul nome negozio → zero sfocatura
       h1: {
         margin: "8px 0 2px",
         fontSize: 30,
@@ -711,26 +776,18 @@ export default function PannelloAdmin() {
         letterSpacing: -0.6,
         lineHeight: 1.05,
         textShadow: "0 1px 0 rgba(255,255,255,0.35)",
-
-        // aiuta un po' la resa
         WebkitFontSmoothing: "antialiased",
         MozOsxFontSmoothing: "grayscale",
         textRendering: "geometricPrecision",
       },
-      h1Main: {
-  fontSize: 30,
-  fontWeight: 1200,
-  margin: 0,
-  letterSpacing: -0.6,
-  color: "#2563eb",
-  textShadow: "0 1px 0 rgba(255,255,255,0.35), 0 12px 26px rgba(0,0,0,0.18)",
-},
 
-      h1Biz: {
-        color: "rgba(185,28,28,0.98)", // rosso pieno (nitido)
-        fontWeight: 1250,
-        letterSpacing: -0.3,
-        textShadow: "0 1px 0 rgba(255,255,255,0.55)",
+      h1Main: {
+        fontSize: 30,
+        fontWeight: 1200,
+        margin: 0,
+        letterSpacing: -0.6,
+        color: "#2563eb",
+        textShadow: "0 1px 0 rgba(255,255,255,0.35), 0 12px 26px rgba(0,0,0,0.18)",
       },
 
       sub: { margin: 0, opacity: 0.82, fontSize: 14, lineHeight: 1.35, color: textSoft },
@@ -1019,7 +1076,7 @@ export default function PannelloAdmin() {
       aGreen: { border: "1px solid rgba(34,197,94,0.30)", background: "rgba(34,197,94,0.12)" },
       aRed: { border: "1px solid rgba(239,68,68,0.30)", background: "rgba(239,68,68,0.12)" },
 
-      // ✅ CARDS (mobile)
+      // CARDS (mobile)
       list: { display: "grid", gap: 10 },
       card: {
         borderRadius: 18,
@@ -1027,7 +1084,7 @@ export default function PannelloAdmin() {
         padding: 12,
         position: "relative",
         overflow: "hidden",
-        border: "2px solid rgba(0,0,0,0.55)", // ✅ bordo nero pieno
+        border: "2px solid rgba(0,0,0,0.55)",
         boxShadow: lowPower ? "0 10px 24px rgba(0,0,0,0.10)" : "0 18px 50px rgba(0,0,0,0.12)",
       },
       cardTop: {
@@ -1113,6 +1170,16 @@ export default function PannelloAdmin() {
     opacity: active ? 1 : 0.8,
   });
 
+  const bookingsChipStyle = (open: boolean | null): CSSProperties => {
+    if (open === null) {
+      return { ...styles.chip, ...styles.chipBtn, border: "1px solid rgba(15,23,42,0.14)", opacity: 0.8 };
+    }
+    if (open) {
+      return { ...styles.chip, ...styles.chipBtn, border: "1px solid rgba(34,197,94,0.32)", background: "rgba(34,197,94,0.10)" };
+    }
+    return { ...styles.chip, ...styles.chipBtn, border: "1px solid rgba(239,68,68,0.32)", background: "rgba(239,68,68,0.10)" };
+  };
+
   const renderCards = () => {
     return (
       <div style={styles.list}>
@@ -1144,7 +1211,6 @@ export default function PannelloAdmin() {
               key={r.id}
               style={{
                 ...styles.card,
-                // ✅ bordo sinistro colorato per lo stato (ma bordo esterno resta nero)
                 borderLeft: `8px solid ${accent}`,
                 ...(glow || {}),
                 transition: "outline 220ms ease, box-shadow 220ms ease",
@@ -1373,6 +1439,9 @@ export default function PannelloAdmin() {
     );
   };
 
+  const bookingsLabel =
+    bookingsOpen === null ? "—" : bookingsOpen ? "APERTE" : "CHIUSE";
+
   return (
     <div style={styles.page}>
       {toast && (
@@ -1394,7 +1463,6 @@ export default function PannelloAdmin() {
                     ✂️
                   </span>
 
-                  {/* ✅ FIX titolo: "Idee per la Testa" non è più trasparente → nitido */}
                   <h1 style={styles.h1}>
                     <span style={styles.h1Main}>Prenotazioni · </span>
                     <span style={styles.h1Main}>Idee per la Testa</span>
@@ -1408,6 +1476,30 @@ export default function PannelloAdmin() {
                     <div style={styles.chip}>🟡 Nuove: {counts.NUOVA}</div>
                     <div style={styles.chip}>✅ Confermate: {counts.CONFERMATA}</div>
                     <div style={styles.chip}>❌ Annullate: {counts.ANNULLATA}</div>
+
+                    {/* ✅ PRENOTAZIONI APERTE/CHIUSE (click per toggle) */}
+                    <div
+                      style={bookingsChipStyle(bookingsOpen)}
+                      onClick={() => {
+                        if (settingsLoading) return;
+                        if (bookingsOpen === null) {
+                          void loadSettings();
+                          return;
+                        }
+                        void setBookingsOpenRemote(!bookingsOpen);
+                      }}
+                      role="button"
+                      title={
+                        bookingsOpen === null
+                          ? "Clicca per ricaricare lo stato"
+                          : bookingsOpen
+                          ? "Clicca per CHIUDERE le prenotazioni"
+                          : "Clicca per APRIRE le prenotazioni"
+                      }
+                      aria-label="Toggle prenotazioni aperte/chiuse"
+                    >
+                      {settingsLoading ? "⏳" : bookingsOpen ? "✅" : "⛔️"} Prenotazioni: {bookingsLabel}
+                    </div>
 
                     <div
                       style={soundChipStyle(soundOn)}
@@ -1443,13 +1535,28 @@ export default function PannelloAdmin() {
                       🗣️ Voce: {voiceOn ? "ON" : "OFF"}
                     </div>
 
-                    <div style={viewChipStyle(viewMode === "AUTO")} onClick={() => setViewMode("AUTO")} role="button" title="Auto (tabella su PC/tablet, card su telefono)">
+                    <div
+                      style={viewChipStyle(viewMode === "AUTO")}
+                      onClick={() => setViewMode("AUTO")}
+                      role="button"
+                      title="Auto (tabella su PC/tablet, card su telefono)"
+                    >
                       👁️ Vista: Auto
                     </div>
-                    <div style={viewChipStyle(viewMode === "TABELLA")} onClick={() => setViewMode("TABELLA")} role="button" title="Sempre Tabella (stile Sheets)">
+                    <div
+                      style={viewChipStyle(viewMode === "TABELLA")}
+                      onClick={() => setViewMode("TABELLA")}
+                      role="button"
+                      title="Sempre Tabella (stile Sheets)"
+                    >
                       📋 Tabella
                     </div>
-                    <div style={viewChipStyle(viewMode === "CARDS")} onClick={() => setViewMode("CARDS")} role="button" title="Sempre Card (più grandi)">
+                    <div
+                      style={viewChipStyle(viewMode === "CARDS")}
+                      onClick={() => setViewMode("CARDS")}
+                      role="button"
+                      title="Sempre Card (più grandi)"
+                    >
                       🧾 Card
                     </div>
                   </div>
@@ -1459,7 +1566,14 @@ export default function PannelloAdmin() {
               <div style={styles.btnRow}>
                 {loggedIn ? (
                   <>
-                    <button style={styles.btnPrimary} onClick={() => loadRows()} disabled={loadingRows}>
+                    <button
+                      style={styles.btnPrimary}
+                      onClick={() => {
+                        void loadRows();
+                        void loadSettings({ silent: true });
+                      }}
+                      disabled={loadingRows}
+                    >
                       {loadingRows ? "Aggiorno…" : "Aggiorna"}
                     </button>
                     <button style={styles.btnDanger} onClick={logout}>
@@ -1477,7 +1591,16 @@ export default function PannelloAdmin() {
         <div style={styles.panel}>
           <div style={styles.panelHeader}>
             <div style={styles.panelTitle}>{loggedIn ? "Prenotazioni" : "Login"}</div>
-            <div style={{ opacity: 0.85, fontSize: 12 }}>{loggedIn ? "Conferma/Annulla → apre WhatsApp con messaggio pronto" : ""}</div>
+            <div style={{ opacity: 0.85, fontSize: 12 }}>
+              {loggedIn ? (
+                <>
+                  Conferma/Annulla → apre WhatsApp con messaggio pronto ·{" "}
+                  <b>Prenotazioni: {bookingsLabel}</b>
+                </>
+              ) : (
+                ""
+              )}
+            </div>
           </div>
 
           <div style={styles.body}>
@@ -1595,8 +1718,7 @@ export default function PannelloAdmin() {
 
                 {!loadingRows && !rowsError && filtered.length > visible.length ? (
                   <div style={styles.ok}>
-                    ⚠️ Modalità leggera attiva: mostro {visible.length} prenotazioni su {filtered.length}. Usa i filtri
-                    (Oggi / 7 giorni / Stato) per vedere le altre.
+                    ⚠️ Modalità leggera attiva: mostro {visible.length} prenotazioni su {filtered.length}. Usa i filtri (Oggi / 7 giorni / Stato) per vedere le altre.
                   </div>
                 ) : null}
 
@@ -1619,98 +1741,50 @@ export default function PannelloAdmin() {
           .mm-grid { grid-template-columns: 1fr !important; }
         }
 
-        @media (max-width: 980px) {
+        /* === MM-TABLE-STYLE (AUTO) === */
+        .mm-table{
+          width: 100%;
+          border-collapse: separate !important;
+          border-spacing: 0 10px !important;
         }
 
-          background: rgba(15,23,42,0.035);
+        .mm-table thead th{
+          font-size: 14px !important;
+          font-weight: 950 !important;
+          letter-spacing: .6px !important;
+          color: #111 !important;
         }
 
-          box-shadow: inset 0 0 0 9999px rgba(245,158,11,0.045);
+        .mm-table tbody tr td{
+          background: #ffffff !important;
+          color: #111 !important;
+          font-size: 15px !important;
+          font-weight: 750 !important;
+
+          border-top: 2px solid rgba(0,0,0,.85) !important;
+          border-bottom: 2px solid rgba(0,0,0,.85) !important;
         }
-      
 
-/* Righe stile card + bordi + testi più grandi */
+        .mm-table tbody tr td:first-child{
+          border-left: 2px solid rgba(0,0,0,.85) !important;
+          border-top-left-radius: 14px !important;
+          border-bottom-left-radius: 14px !important;
 
-/* Header più grande */
-  font-size: 14px !important;
-  font-weight: 900 !important;
-  letter-spacing: .8px !important;
-  color: #111 !important;
-}
+          font-size: 20px !important;
+          font-weight: 950 !important;
+        }
 
-/* Celle più leggibili */
-  font-size: 15.5px !important;
-  font-weight: 800 !important;
-  color: #111 !important;
-}
+        .mm-table tbody tr td:last-child{
+          border-right: 2px solid rgba(0,0,0,.85) !important;
+          border-top-right-radius: 14px !important;
+          border-bottom-right-radius: 14px !important;
+        }
 
-/* Nome cliente ancora più grande */
-  font-size: 18px !important;
-  font-weight: 900 !important;
-}
-
-/* Card bianche dentro + bordo completo */
-  background: #fff !important;
-  border-top: 2px solid rgba(0,0,0,.85) !important;
-  border-bottom: 2px solid rgba(0,0,0,.85) !important;
-}
-  border-left: 2px solid rgba(0,0,0,.85) !important;
-  border-top-left-radius: 14px !important;
-  border-bottom-left-radius: 14px !important;
-}
-  border-right: 2px solid rgba(0,0,0,.85) !important;
-  border-top-right-radius: 14px !important;
-  border-bottom-right-radius: 14px !important;
-}
-
-
-
-/* === MM-TABLE-STYLE (AUTO) === */
-/* Tabella: righe a card con bordi neri + testi più leggibili + nome cliente grande */
-.mm-table{
-  width: 100%;
-  border-collapse: separate !important;
-  border-spacing: 0 10px !important;
-}
-
-.mm-table thead th{
-  font-size: 14px !important;
-  font-weight: 950 !important;
-  letter-spacing: .6px !important;
-  color: #111 !important;
-}
-
-.mm-table tbody tr td{
-  background: #ffffff !important;
-  color: #111 !important;
-  font-size: 15px !important;
-  font-weight: 750 !important;
-
-  border-top: 2px solid rgba(0,0,0,.85) !important;
-  border-bottom: 2px solid rgba(0,0,0,.85) !important;
-}
-
-.mm-table tbody tr td:first-child{
-  border-left: 2px solid rgba(0,0,0,.85) !important;
-  border-top-left-radius: 14px !important;
-  border-bottom-left-radius: 14px !important;
-
-  font-size: 20px !important;   /* NOME CLIENTE PIÙ GRANDE */
-  font-weight: 950 !important;
-}
-
-.mm-table tbody tr td:last-child{
-  border-right: 2px solid rgba(0,0,0,.85) !important;
-  border-top-right-radius: 14px !important;
-  border-bottom-right-radius: 14px !important;
-}
-
-.mm-table tbody tr:hover td{
-  background: #f3f7ff !important;
-}
-/* === /MM-TABLE-STYLE (AUTO) === */
-
-`}</style>
+        .mm-table tbody tr:hover td{
+          background: #f3f7ff !important;
+        }
+        /* === /MM-TABLE-STYLE (AUTO) === */
+      `}</style>
     </div>
   );
 }

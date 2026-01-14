@@ -1,9 +1,18 @@
 import { NextResponse } from "next/server";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function jsonNoStore(body: any, init?: { status?: number }) {
+  const res = NextResponse.json(body, { status: init?.status ?? 200 });
+  res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.headers.set("Pragma", "no-cache");
+  res.headers.set("Expires", "0");
+  return res;
+}
+
 function badRequest(message: string) {
-  return NextResponse.json({ ok: false, error: message }, { status: 400 });
+  return jsonNoStore({ ok: false, error: message }, { status: 400 });
 }
 
 function env(name: string) {
@@ -24,44 +33,52 @@ async function callGoogleScript(date: string) {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    // Apps Script router: action + secret + date
     body: JSON.stringify({
       action: "get_availability",
       secret,
       date,
     }),
+    cache: "no-store",
   });
 
-  const text = await res.text();
+  const text = await res.text().catch(() => "");
 
-  // Se Apps Script risponde HTML (capita quando deploy/permessi non ok), qui lo vedi subito
   let json: any = null;
   try {
     json = JSON.parse(text);
   } catch {
-    throw new Error(
-      "Apps Script non ha restituito JSON. Prima riga risposta: " +
-        text.slice(0, 120)
-    );
+    throw new Error("Apps Script non ha restituito JSON. Prima riga: " + text.slice(0, 160));
   }
 
   return json;
 }
 
 function normalizeFreeSlots(payload: any): string[] {
-  // accetta vari formati possibili
   const free =
     payload?.freeSlots ??
     payload?.slots ??
     payload?.availableSlots ??
-    payload?.data?.freeSlots;
+    payload?.data?.freeSlots ??
+    payload?.data?.slots;
 
   return Array.isArray(free) ? free.map(String) : [];
 }
 
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const date = (searchParams.get("date") || "").trim();
+async function handle(req: Request) {
+  let date = "";
+
+  if (req.method === "GET") {
+    const { searchParams } = new URL(req.url);
+    date = (searchParams.get("date") || "").trim();
+  } else {
+    let body: any = null;
+    try {
+      body = await req.json();
+    } catch {
+      return badRequest("Body non valido");
+    }
+    date = String(body?.date || "").trim();
+  }
 
   if (!date) return badRequest("date mancante");
   if (!isIsoDate(date)) return badRequest("date non valida (usa YYYY-MM-DD)");
@@ -69,52 +86,34 @@ export async function GET(req: Request) {
   try {
     const data = await callGoogleScript(date);
 
-    // se lo script usa { ok: false, error: ... }
+    // ✅ Se Apps Script dice ok:false, NON trasformare tutto in 502.
+    // Propaga lo status (se lo script lo manda come _status).
     if (data?.ok === false) {
-      return NextResponse.json(
-        { ok: false, error: data?.error || "Errore Apps Script" },
-        { status: 502 }
+      const status =
+        typeof data?._status === "number"
+          ? data._status
+          : /chiuse/i.test(String(data?.error || "")) // fallback: se contiene "chiuse"
+          ? 403
+          : 502;
+
+      const { _status, ...rest } = data || {};
+      return jsonNoStore(
+        { ok: false, error: rest?.error || "Errore Apps Script" },
+        { status }
       );
     }
 
     const freeSlots = normalizeFreeSlots(data);
-    return NextResponse.json({ ok: true, freeSlots }, { status: 200 });
+    return jsonNoStore({ ok: true, freeSlots }, { status: 200 });
   } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: e?.message || String(e) },
-      { status: 500 }
-    );
+    return jsonNoStore({ ok: false, error: e?.message || String(e) }, { status: 500 });
   }
 }
 
+export async function GET(req: Request) {
+  return handle(req);
+}
+
 export async function POST(req: Request) {
-  let body: any = null;
-  try {
-    body = await req.json();
-  } catch {
-    return badRequest("Body non valido");
-  }
-
-  const date = String(body?.date || "").trim();
-  if (!date) return badRequest("date mancante");
-  if (!isIsoDate(date)) return badRequest("date non valida (usa YYYY-MM-DD)");
-
-  try {
-    const data = await callGoogleScript(date);
-
-    if (data?.ok === false) {
-      return NextResponse.json(
-        { ok: false, error: data?.error || "Errore Apps Script" },
-        { status: 502 }
-      );
-    }
-
-    const freeSlots = normalizeFreeSlots(data);
-    return NextResponse.json({ ok: true, freeSlots }, { status: 200 });
-  } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: e?.message || String(e) },
-      { status: 500 }
-    );
-  }
+  return handle(req);
 }

@@ -6,6 +6,25 @@ import FastBookingForm from "./components/FastBookingForm";
 import CancelBookingForm from "./components/CancelBookingForm";
 import { getBusinessConfig } from "./config/business";
 
+type SettingsResponse =
+  | { ok: true; bookings_open?: boolean; bookingsOpen?: boolean; value?: any; key?: string }
+  | { ok: false; error?: string; details?: any };
+
+async function safeJson(res: Response) {
+  const text = await res.text().catch(() => "");
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { ok: false, error: "Risposta non valida dal server.", details: text };
+  }
+}
+
+function toBool(v: any): boolean {
+  if (typeof v === "boolean") return v;
+  const s = String(v ?? "").trim().toLowerCase();
+  return s === "true" || s === "1" || s === "yes" || s === "y" || s === "on" || s === "si";
+}
+
 export default function HomePage() {
   const biz = useMemo(() => {
     try {
@@ -32,7 +51,6 @@ export default function HomePage() {
       mq.addEventListener("change", sync);
       return () => mq.removeEventListener("change", sync);
     } catch {
-      // Safari vecchio
       mq.addListener(sync);
       return () => mq.removeListener(sync);
     }
@@ -59,9 +77,7 @@ export default function HomePage() {
     ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  // ✅ IMPORTANTISSIMO (iPhone):
-  // Quando la chat è aperta su mobile, blocco COMPLETAMENTE lo scroll della pagina sotto.
-  // Questo è ciò che evita il salto “mi spara sopra” quando tocchi l’input o invii.
+  // ✅ iPhone: quando chat aperta su mobile blocco scroll sotto
   useEffect(() => {
     if (!isMobile) return;
     if (!showHelp) return;
@@ -94,6 +110,51 @@ export default function HomePage() {
     };
   }, [showHelp, isMobile]);
 
+  // ✅ PRENOTAZIONI APERTE/CHIUSE (stato pubblico)
+  const [bookingsOpen, setBookingsOpen] = useState<boolean | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+
+  const loadSettings = async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setSettingsLoading(true);
+    try {
+      // ✅ esplicito: chiediamo proprio bookings_open
+      const res = await fetch("/api/settings?key=bookings_open", { cache: "no-store" });
+      const data: SettingsResponse = await safeJson(res);
+
+      if (!(data as any)?.ok) {
+        setBookingsOpen(null);
+        return;
+      }
+
+      // ✅ accetta tutti i formati possibili
+      const v =
+        (data as any).bookings_open ??
+        (data as any).bookingsOpen ??
+        (data as any).value;
+
+      if (typeof v === "undefined") {
+        setBookingsOpen(null);
+        return;
+      }
+
+      setBookingsOpen(toBool(v));
+    } catch {
+      setBookingsOpen(null);
+    } finally {
+      if (!opts?.silent) setSettingsLoading(false);
+      else setSettingsLoading(false); // tienilo semplice: fine sempre
+    }
+  };
+
+  useEffect(() => {
+    void loadSettings({ silent: true });
+
+    const id = window.setInterval(() => void loadSettings({ silent: true }), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const bookingsLabel = bookingsOpen === null ? "—" : bookingsOpen ? "APERTE" : "CHIUSE";
+
   const styles: Record<string, React.CSSProperties> = {
     page: {
       minHeight: "100vh",
@@ -119,9 +180,25 @@ export default function HomePage() {
       width: "100%",
       textAlign: "center",
     },
+
+    statusPill: {
+      marginTop: 10,
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 10,
+      padding: "8px 12px",
+      borderRadius: 999,
+      fontWeight: 950,
+      fontSize: 12,
+      letterSpacing: 0.7,
+      textTransform: "uppercase",
+      border: "1px solid rgba(255,255,255,0.16)",
+      background: "rgba(255,255,255,0.10)",
+      backdropFilter: lowPower ? undefined : "blur(10px)",
+    },
+
     hero: { marginTop: 12, padding: "14px 2px 10px", textAlign: "center" },
 
-    // ✅ FIX NITIDEZZA TITOLO (no “sfocato”)
     h1: {
       fontSize: "clamp(32px, 6vw, 44px)",
       lineHeight: 1.05,
@@ -129,10 +206,7 @@ export default function HomePage() {
       fontWeight: 900,
       textAlign: "center",
       wordBreak: "break-word",
-
-      // prima era: 0 12px 40px ... (troppo “blur”)
       textShadow: "0 2px 10px rgba(0,0,0,0.22)",
-
       WebkitFontSmoothing: "antialiased",
       MozOsxFontSmoothing: "grayscale",
       textRendering: "geometricPrecision",
@@ -168,6 +242,13 @@ export default function HomePage() {
       background: "linear-gradient(90deg, #2f7dff 0%, #49c6ff 120%)",
       color: "#061a3a",
     },
+    btnDisabled: {
+      opacity: 0.55,
+      filter: "grayscale(0.3)",
+      cursor: "not-allowed",
+      pointerEvents: "none",
+    },
+
     smallHint: { marginTop: 12, fontSize: 13, opacity: 0.85, textAlign: "center", lineHeight: 1.4 },
     grid: {
       marginTop: 18,
@@ -221,7 +302,29 @@ export default function HomePage() {
       fontSize: 12,
       padding: "10px 0 2px",
     },
+
+    closedBox: {
+      borderRadius: 16,
+      border: "1px solid rgba(255,255,255,0.18)",
+      background: "linear-gradient(180deg, rgba(255,75,75,0.18), rgba(255,255,255,0.08))",
+      padding: 14,
+      color: "rgba(255,255,255,0.92)",
+    },
+    closedTitle: { fontWeight: 950, fontSize: 16, margin: 0 },
+    closedSub: { marginTop: 6, opacity: 0.9, lineHeight: 1.4, fontSize: 13 },
+    reloadLink: {
+      marginTop: 10,
+      display: "inline-flex",
+      gap: 8,
+      alignItems: "center",
+      cursor: "pointer",
+      fontWeight: 950,
+      textDecoration: "underline",
+      opacity: 0.95,
+    },
   };
+
+  const bookingDisabled = bookingsOpen === false;
 
   return (
     <main style={styles.page}>
@@ -235,10 +338,37 @@ export default function HomePage() {
             {title} <span aria-hidden>💈</span>
           </h1>
 
+          <div
+            style={{
+              ...styles.statusPill,
+              border:
+                bookingsOpen === null
+                  ? "1px solid rgba(255,255,255,0.16)"
+                  : bookingsOpen
+                  ? "1px solid rgba(34,197,94,0.35)"
+                  : "1px solid rgba(255,75,75,0.35)",
+              background:
+                bookingsOpen === null
+                  ? "rgba(255,255,255,0.10)"
+                  : bookingsOpen
+                  ? "rgba(34,197,94,0.16)"
+                  : "rgba(255,75,75,0.16)",
+            }}
+            title="Stato prenotazioni"
+          >
+            {settingsLoading ? "⏳" : bookingsOpen ? "✅" : bookingsOpen === false ? "⛔️" : "ℹ️"} Prenotazioni:{" "}
+            {bookingsLabel}
+          </div>
+
           <div style={styles.actionsRow}>
-            <button style={{ ...styles.btn, ...styles.btnPrimary }} onClick={() => scrollTo(refBook)}>
+            <button
+              style={{ ...styles.btn, ...styles.btnPrimary, ...(bookingDisabled ? styles.btnDisabled : {}) }}
+              onClick={() => scrollTo(refBook)}
+              title={bookingDisabled ? "Prenotazioni chiuse" : "Vai alla prenotazione"}
+            >
               Prenota ora
             </button>
+
             <button style={{ ...styles.btn, ...styles.btnBlue }} onClick={() => scrollTo(refCancel)}>
               Annulla
             </button>
@@ -254,7 +384,6 @@ export default function HomePage() {
         </header>
 
         <section style={styles.grid} className="mm-home-grid">
-          {/* INFO */}
           <div style={styles.card} className="mm-card mm-info">
             <div style={styles.cardInner}>
               <h2 style={styles.cardTitle}>Informazioni principali</h2>
@@ -287,7 +416,6 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* ASSISTENZA (desktop inline) */}
           <div style={styles.card} className="mm-card mm-help">
             <div style={{ ...styles.cardInner, paddingBottom: 10 }}>
               <div style={styles.helpTop}>
@@ -306,7 +434,6 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* ✅ su desktop la chat resta dentro la card */}
             {!isMobile && showHelp ? (
               <>
                 <div style={styles.divider} />
@@ -328,14 +455,28 @@ export default function HomePage() {
             )}
           </div>
 
-          {/* PRENOTA */}
           <div ref={refBook} style={styles.card} className="mm-card mm-span2">
             <div style={styles.cardInner}>
-              <FastBookingForm />
+              {bookingsOpen === false ? (
+                <div style={styles.closedBox}>
+                  <p style={styles.closedTitle}>⛔️ Prenotazioni momentaneamente chiuse</p>
+                  <div style={styles.closedSub}>In questo momento non è possibile prenotare</div>
+
+                  <div
+                    style={styles.reloadLink}
+                    onClick={() => void loadSettings()}
+                    role="button"
+                    title="Ricarica stato prenotazioni"
+                  >
+                    🔄 Ricarica stato
+                  </div>
+                </div>
+              ) : (
+                <FastBookingForm />
+              )}
             </div>
           </div>
 
-          {/* ANNULLA */}
           <div ref={refCancel} style={styles.card} className="mm-card mm-span2">
             <div style={styles.cardInner}>
               <CancelBookingForm />
@@ -346,7 +487,6 @@ export default function HomePage() {
         <footer style={styles.footer}>Powered by GalaxBot AI</footer>
       </div>
 
-      {/* ✅ MOBILE: chat in overlay (risolve scroll che “scappa sopra” su iPhone) */}
       {isMobile && showHelp ? (
         <div className="mm-helpModal" role="dialog" aria-modal="true">
           <div className="mm-helpSheet">
